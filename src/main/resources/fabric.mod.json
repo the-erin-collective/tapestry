@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "tapestry",
+  "version": "${version}",
+  "name": "Tapestry",
+  "description": "TypeScript-first modding framework with explicit lifecycle",
+  "authors": [
+    "The Tapestry Team"
+  ],
+  "contact": {
+    "homepage": "https://github.com/the-erin-collective/tapestry",
+    "sources": "https://github.com/the-erin-collective/tapestry"
+  },
+  "license": "MIT",
+  "icon": "assets/tapestry/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.tapestry.TapestryMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.4",
+    "java": ">=17"
+  }
+}
