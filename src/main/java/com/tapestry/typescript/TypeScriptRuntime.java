@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
@@ -112,11 +111,14 @@ public class TypeScriptRuntime {
             // Extend the tapestry object with full API
             extendTapestryObjectForReady(api, hookRegistry);
             
+            // Run TS_READY phase sanity check
+            runSanityCheckForPhase(TapestryPhase.TS_READY);
+            
             LOGGER.info("TypeScript runtime extended for TS_READY phase");
             
         } catch (Exception e) {
             LOGGER.error("Failed to extend TypeScript runtime for TS_READY", e);
-            throw new RuntimeException("Failed to extend TypeScript runtime", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for TS_READY", e);
         }
     }
     
@@ -153,7 +155,7 @@ public class TypeScriptRuntime {
                 throw new IllegalArgumentException("tapestry.mod.define requires exactly one argument");
             }
             
-            Object modDefinition = args[0];
+            Value modDefinition = (Value) args[0];
             defineFunction.define(modDefinition);
             return null;
         });
@@ -271,7 +273,7 @@ public class TypeScriptRuntime {
             throw new RuntimeException("Failed to execute onLoad for mod: " + modId, e);
         } finally {
             // Clear current mod ID
-            currentModId.set(null);
+            currentModId.remove();
         }
     }
     
@@ -280,7 +282,16 @@ public class TypeScriptRuntime {
      * This checks that the tapestry object is accessible and has the expected structure.
      */
     private void runSanityCheck() {
-        LOGGER.debug("Running TypeScript runtime sanity check");
+        runSanityCheckForPhase(TapestryPhase.TS_LOAD);
+    }
+    
+    /**
+     * Runs a phase-specific sanity check.
+     * 
+     * @param phase the phase to check against
+     */
+    private void runSanityCheckForPhase(TapestryPhase phase) {
+        LOGGER.debug("Running TypeScript runtime sanity check for phase: {}", phase);
         
         try {
             // Check that tapestry object exists
@@ -289,23 +300,32 @@ public class TypeScriptRuntime {
                 throw new RuntimeException("tapestry object is not accessible");
             }
             
-            // Check that mod.define exists
+            // Check that mod.define exists (available in all phases)
             Value modDefine = jsContext.eval("js", "typeof tapestry.mod.define");
             if (!modDefine.asString().equals("function")) {
                 throw new RuntimeException("tapestry.mod.define is not a function");
             }
             
-            // Check that worldgen.onResolveBlock exists
-            Value worldgenHook = jsContext.eval("js", "typeof tapestry.worldgen.onResolveBlock");
-            if (!worldgenHook.asString().equals("function")) {
-                throw new RuntimeException("tapestry.worldgen.onResolveBlock is not a function");
+            // Check that console functions exist (available in all phases)
+            Value consoleLog = jsContext.eval("js", "typeof console.log");
+            if (!consoleLog.asString().equals("function")) {
+                throw new RuntimeException("console.log is not a function");
             }
             
-            LOGGER.debug("Sanity check passed");
+            // Phase-specific checks
+            if (phase == TapestryPhase.TS_READY || phase == TapestryPhase.RUNTIME) {
+                // Check that worldgen.onResolveBlock exists (only available from TS_READY onwards)
+                Value worldgenHook = jsContext.eval("js", "typeof tapestry.worldgen.onResolveBlock");
+                if (!worldgenHook.asString().equals("function")) {
+                    throw new RuntimeException("tapestry.worldgen.onResolveBlock is not a function");
+                }
+            }
+            
+            LOGGER.debug("Sanity check passed for phase: {}", phase);
             
         } catch (Exception e) {
-            LOGGER.error("TypeScript runtime sanity check failed", e);
-            throw new RuntimeException("TypeScript runtime sanity check failed", e);
+            LOGGER.error("TypeScript runtime sanity check failed for phase: {}", phase, e);
+            throw new RuntimeException("TypeScript runtime sanity check failed for phase: " + phase, e);
         }
     }
     

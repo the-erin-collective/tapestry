@@ -2,7 +2,6 @@ package com.tapestry.typescript;
 
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
-import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,15 +32,19 @@ public class TsModDefineFunction {
     /**
      * Defines a TypeScript mod from the given JavaScript mod definition object.
      * 
-     * @param modDefinition JavaScript object containing mod definition
+     * @param modDefinition JavaScript Value containing mod definition
      * @throws IllegalArgumentException if mod definition is invalid
      * @throws IllegalStateException if a mod is already defined in this source
      */
-    public void define(Object modDefinition) {
+    public void define(Value modDefinition) {
         // Phase enforcement: only allowed during TS_LOAD
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
         
         if (modDefinition == null) {
+            throw new IllegalArgumentException("Mod definition must be an object with properties");
+        }
+        
+        if (!modDefinition.hasMembers()) {
             throw new IllegalArgumentException("Mod definition must be an object with properties");
         }
         
@@ -56,18 +59,10 @@ public class TsModDefineFunction {
             throw new IllegalStateException("Multiple tapestry.mod.define calls in source: " + currentSource);
         }
         
-        // Convert to Value for property access using the current JS context
-        Context jsContext = TypeScriptRuntime.getJsContext();
-        if (jsContext == null) {
-            throw new IllegalStateException("JavaScript context not initialized");
-        }
-        
-        Value modDefValue = jsContext.asValue(modDefinition);
-        
-        // Extract required properties
-        String id = extractString(modDefValue, "id", "mod id");
-        Value onLoad = extractValue(modDefValue, "onLoad", "onLoad function");
-        Value onEnable = extractOptionalValue(modDefValue, "onEnable");
+        // Extract required properties from the Value
+        String id = extractString(modDefinition, "id", "mod id");
+        Value onLoad = extractValue(modDefinition, "onLoad", "onLoad function");
+        Value onEnable = extractOptionalValue(modDefinition, "onEnable");
         
         // Validate mod ID
         if (!MOD_ID_PATTERN.matcher(id).matches()) {
