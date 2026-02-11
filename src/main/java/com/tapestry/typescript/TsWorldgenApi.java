@@ -3,6 +3,7 @@ package com.tapestry.typescript;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,8 +49,13 @@ public class TsWorldgenApi {
             throw new IllegalStateException("No mod ID set in current context");
         }
         
-        // Convert handler to Value for registration
-        Value handlerValue = Value.asValue(handler);
+        // Convert handler to Value for registration using the JS context
+        Context jsContext = TypeScriptRuntime.getJsContext();
+        if (jsContext == null) {
+            throw new IllegalStateException("JavaScript context not initialized");
+        }
+        
+        Value handlerValue = jsContext.asValue(handler);
         
         // Verify it's executable
         if (!handlerValue.canExecute()) {

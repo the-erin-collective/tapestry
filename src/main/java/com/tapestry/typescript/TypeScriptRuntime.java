@@ -27,8 +27,8 @@ public class TypeScriptRuntime {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(TypeScriptRuntime.class);
     
-    private Context jsContext;
-    private boolean initialized = false;
+    private static Context jsContext;
+    private static boolean initialized = false;
     
     // ThreadLocal context for tracking current script and mod
     private static final ThreadLocal<String> currentSource = new ThreadLocal<>();
@@ -51,26 +51,20 @@ public class TypeScriptRuntime {
             throw new IllegalStateException("TypeScript runtime already initialized");
         }
         
-        if (!api.isFrozen()) {
-            throw new IllegalStateException("API must be frozen before initializing TypeScript runtime");
-        }
-        
-        LOGGER.info("Initializing TypeScript runtime with GraalVM Polyglot");
-        
         try {
-            // Create JavaScript context with tightened security for Phase 2
-            // SECURITY NOTE: HostAccess.NONE is now enforced for user mod execution
-            // Only tapestry API and console are exposed - no arbitrary Java access
+            // Create JavaScript context with HostAccess.NONE for security
             jsContext = Context.newBuilder("js")
-                .allowHostAccess(HostAccess.NONE) // RESTRICTED - no direct Java access
-                .allowHostClassLookup(s -> false) // RESTRICTED - no class loading
-                .allowIO(false) // RESTRICTED - no file system access
+                .allowHostAccess(HostAccess.NONE)
+                .allowHostClassLookup(s -> false)
+                .allowIO(false)
                 .build();
             
-            // Build the complete tapestry object
-            buildTapestryObject(api, modRegistry, hookRegistry);
+            // Build minimal tapestry object for TS_LOAD phase
+            buildTapestryObjectForLoad(modRegistry);
             
-            // Run a sanity check to ensure the runtime is working
+            // Store API and hookRegistry for later extension in TS_READY
+            // We'll extend the tapestry object when we reach TS_READY phase
+            // For now, just run a sanity check
             runSanityCheck();
             
             initialized = true;
@@ -83,22 +77,39 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Builds the complete tapestry object with all sub-objects.
+     * Extends the tapestry object for TS_READY phase.
+     * This should be called when transitioning to TS_READY phase.
      * 
-     * @param api the frozen API
-     * @param modRegistry the mod registry
-     * @param hookRegistry the hook registry
+     * @param api frozen TapestryAPI to expose
+     * @param hookRegistry the hook registry for hook registration
      */
-    private void buildTapestryObject(TapestryAPI api, TsModRegistry modRegistry, HookRegistry hookRegistry) {
-        // Create the main tapestry object
-        Map<String, Object> tapestry = new HashMap<>();
+    public void extendForReadyPhase(TapestryAPI api, HookRegistry hookRegistry) {
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_READY);
         
-        // Add core domains
-        tapestry.put("worlds", api.getWorlds());
-        tapestry.put("worldgen", api.getWorldgen());
-        tapestry.put("events", api.getEvents());
-        tapestry.put("core", api.getCore());
-        tapestry.put("mods", api.getMods());
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            // Extend the tapestry object with full API
+            extendTapestryObjectForReady(api, hookRegistry);
+            
+            LOGGER.info("TypeScript runtime extended for TS_READY phase");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for TS_READY", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime", e);
+        }
+    }
+    
+    /**
+     * Builds the minimal tapestry object for TS_LOAD phase.
+     * 
+     * @param modRegistry the mod registry for registration
+     */
+    private void buildTapestryObjectForLoad(TsModRegistry modRegistry) {
+        // Create minimal tapestry object for TS_LOAD - only expose mod.define
+        Map<String, Object> tapestry = new HashMap<>();
         
         // Add mod.define function
         Map<String, Object> modNamespace = new HashMap<>();
@@ -112,14 +123,7 @@ public class TypeScriptRuntime {
         });
         tapestry.put("mod", modNamespace);
         
-        // Add worldgen API with hook registration
-        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
-        tapestry.put("worldgen", worldgenApi.createApiObject());
-        
-        // Inject the complete tapestry object
-        jsContext.getBindings("js").putMember("tapestry", tapestry);
-        
-        // Inject console object
+        // Inject console object for logging during TS_LOAD
         Map<String, Object> console = new HashMap<>();
         console.put("log", new Object() {
             @SuppressWarnings("unused")
@@ -163,9 +167,37 @@ public class TypeScriptRuntime {
                 return null;
             }
         });
+        
+        // Inject the minimal tapestry object
+        jsContext.getBindings("js").putMember("tapestry", tapestry);
         jsContext.getBindings("js").putMember("console", console);
         
-        LOGGER.debug("Built complete tapestry object with JS-compatible API");
+        LOGGER.debug("Built minimal tapestry object for TS_LOAD phase");
+    }
+    
+    /**
+     * Extends the tapestry object for TS_READY phase.
+     * 
+     * @param api frozen API to expose
+     * @param hookRegistry the hook registry for hook registration
+     */
+    private void extendTapestryObjectForReady(TapestryAPI api, HookRegistry hookRegistry) {
+        // Get the existing tapestry object
+        Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+        Map<String, Object> tapestry = tapestryValue.as(Map.class);
+        
+        // Add core domains
+        tapestry.put("worlds", api.getWorlds());
+        tapestry.put("worldgen", api.getWorldgen());
+        tapestry.put("events", api.getEvents());
+        tapestry.put("core", api.getCore());
+        tapestry.put("mods", api.getMods());
+        
+        // Add worldgen API with hook registration
+        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
+        tapestry.put("worldgen", worldgenApi.createApiObject());
+        
+        LOGGER.debug("Extended tapestry object for TS_READY phase");
     }
     
     /**
@@ -201,7 +233,7 @@ public class TypeScriptRuntime {
      * 
      * @param onLoad onLoad function to execute
      * @param modId mod ID for context tracking
-     * @param api TapestryAPI to pass to the function
+     * @param api TapestryAPI to pass to the function (not used - we pass JS tapestry object instead)
      */
     public void executeOnLoad(Object onLoad, String modId, TapestryAPI api) {
         if (!initialized) {
@@ -217,17 +249,20 @@ public class TypeScriptRuntime {
         currentModId.set(modId);
         
         try {
-            // Convert Object to Value for execution
-            Value onLoadFunction = Value.asValue(onLoad);
+            // Convert Object to Value for execution using the JS context
+            Value onLoadFunction = jsContext.asValue(onLoad);
             
             // Verify it's executable
             if (!onLoadFunction.canExecute()) {
                 throw new IllegalArgumentException("onLoad must be an executable function");
             }
             
-            // Execute onLoad function with the API object
-            // The API object should be the same one exposed to JavaScript
-            onLoadFunction.executeVoid(api);
+            // Get the JS tapestry object to pass to onLoad function
+            // This is the same object exposed to JavaScript
+            Value tapestryObject = jsContext.getBindings("js").getMember("tapestry");
+            
+            // Execute onLoad function with the JS tapestry object
+            onLoadFunction.executeVoid(tapestryObject);
             
             LOGGER.info("Successfully executed onLoad for mod: {}", modId);
         } catch (Exception e) {
@@ -356,7 +391,7 @@ public class TypeScriptRuntime {
      * 
      * @return the JavaScript context
      */
-    public Context getJsContext() {
+    public static Context getJsContext() {
         return jsContext;
     }
     

@@ -121,6 +121,9 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("=== TS_READY PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
         
+        // Extend the tapestry object with full API for TS_READY phase
+        tsRuntime.extendForReadyPhase(api, hookRegistry);
+        
         // Allow hook registration
         hookRegistry.allowRegistration();
         

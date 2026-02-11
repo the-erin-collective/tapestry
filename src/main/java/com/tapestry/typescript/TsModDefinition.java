@@ -1,5 +1,7 @@
 package com.tapestry.typescript;
 
+import org.graalvm.polyglot.Value;
+
 /**
  * Represents a TypeScript mod definition registered via tapestry.mod.define().
  * 
@@ -7,8 +9,8 @@ package com.tapestry.typescript;
  */
 public record TsModDefinition(
     String id,
-    Object onLoad,
-    Object onEnable,
+    Value onLoad,
+    Value onEnable,
     String source
 ) {
     
@@ -55,7 +57,7 @@ public record TsModDefinition(
      * 
      * @return the onLoad function
      */
-    public Object getOnLoad() {
+    public Value getOnLoad() {
         return onLoad;
     }
     
@@ -64,7 +66,7 @@ public record TsModDefinition(
      * 
      * @return the onEnable function, or null if not provided
      */
-    public Object getOnEnable() {
+    public Value getOnEnable() {
         return onEnable;
     }
     
