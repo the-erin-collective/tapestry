@@ -39,23 +39,33 @@ public class TsModDefineFunction {
             throw new IllegalArgumentException("Mod definition must be an object with properties");
         }
         
-        // For now, we'll assume modDefinition is a Map-like object
-        // In a real implementation, we'd need to properly extract values from the JS object
-        String id = "unknown"; // Would extract from modDefinition
-        Value onLoad = null; // Would extract from modDefinition
-        Value onEnable = null; // Would extract from modDefinition
+        // Convert Object to Value for member access
+        Value modDef = Value.asValue(modDefinition);
         
-        // Create source information using current source tracking
-        String source = TypeScriptRuntime.getCurrentSource();
-        if (source == null) {
-            source = "unknown";
+        // Extract required fields from the mod definition
+        String id = extractString(modDef, "id", "Mod ID");
+        Value onLoad = extractValue(modDef, "onLoad", "onLoad function");
+        Value onEnable = extractOptionalValue(modDef, "onEnable");
+        
+        // Enforce one define per file via current source tracking
+        String currentSource = TypeScriptRuntime.getCurrentSource();
+        if (currentSource == null) {
+            throw new IllegalStateException("Cannot define mod outside of script evaluation");
         }
         
-        // Create and register the mod definition
-        TsModDefinition mod = new TsModDefinition(id, onLoad, onEnable, source);
+        // Check if we already defined a mod in this source
+        if (TypeScriptRuntime.hasModDefinedInSource(currentSource)) {
+            throw new IllegalStateException("Only one mod can be defined per source file");
+        }
+        
+        // Mark that this source has defined a mod
+        TypeScriptRuntime.markModDefinedInSource(currentSource);
+        
+        // Create and register mod definition
+        TsModDefinition mod = new TsModDefinition(id, onLoad, onEnable, currentSource);
         registry.registerMod(mod);
         
-        LOGGER.info("Registered mod '{}' from source '{}'", id, source);
+        LOGGER.info("Registered mod '{}' from source '{}'", id, currentSource);
     }
     
     /**

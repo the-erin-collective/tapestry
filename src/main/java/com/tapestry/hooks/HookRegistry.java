@@ -96,7 +96,8 @@ public class HookRegistry {
         for (Hook<?, ?> hook : hookList) {
             try {
                 // Execute hook with proper signature: handler(ctx, vanillaBlock)
-                Object result = hook.callback().execute(context, hook.modId());
+                // Note: The context object should already contain the modId
+                Object result = hook.callback().execute(context);
                 
                 if (result != null) {
                     LOGGER.debug("Hook '{}' from mod '{}' returned non-null result", hookType, hook.modId());
