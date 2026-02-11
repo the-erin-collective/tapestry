@@ -8,6 +8,8 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
+import org.graalvm.polyglot.proxy.ProxyObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +17,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
@@ -37,6 +40,9 @@ public class TypeScriptRuntime {
     // Track sources that have already defined a mod (one-define-per-file rule)
     private static final Set<String> sourcesWithModDefine = new HashSet<>();
     
+    // Define function instance
+    private static TsModDefineFunction defineFunction;
+    
     /**
      * Initializes the TypeScript runtime with mod loading capabilities.
      * 
@@ -52,6 +58,9 @@ public class TypeScriptRuntime {
         }
         
         try {
+            // Initialize the define function
+            defineFunction = new TsModDefineFunction(modRegistry);
+            
             // Create JavaScript context with HostAccess.NONE for security
             jsContext = Context.newBuilder("js")
                 .allowHostAccess(HostAccess.NONE)
@@ -60,7 +69,13 @@ public class TypeScriptRuntime {
                 .build();
             
             // Build minimal tapestry object for TS_LOAD phase
-            buildTapestryObjectForLoad(modRegistry);
+            Object bindings = buildTapestryObjectForLoad();
+            
+            // Inject bindings into the context
+            Map<String, Object> bindingsMap = (Map<String, Object>) bindings;
+            for (Map.Entry<String, Object> entry : bindingsMap.entrySet()) {
+                jsContext.getBindings("js").putMember(entry.getKey(), entry.getValue());
+            }
             
             // Store API and hookRegistry for later extension in TS_READY
             // We'll extend the tapestry object when we reach TS_READY phase
@@ -103,99 +118,96 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Builds the minimal tapestry object for TS_LOAD phase.
-     * 
-     * @param modRegistry the mod registry for registration
+     * Builds the minimal tapestry object for TS_LOAD phase using proper GraalVM proxies.
+     * Only exposes tapestry.mod.define and console functions.
      */
-    private void buildTapestryObjectForLoad(TsModRegistry modRegistry) {
-        // Create minimal tapestry object for TS_LOAD - only expose mod.define
-        Map<String, Object> tapestry = new HashMap<>();
-        
-        // Add mod.define function
-        Map<String, Object> modNamespace = new HashMap<>();
-        TsModDefineFunction defineFunction = new TsModDefineFunction(modRegistry);
-        modNamespace.put("define", new Object() {
-            @SuppressWarnings("unused")
-            public Object define(Object modDefinition) {
-                defineFunction.define(modDefinition);
-                return null;
-            }
-        });
-        tapestry.put("mod", modNamespace);
-        
-        // Inject console object for logging during TS_LOAD
+    private Object buildTapestryObjectForLoad() {
+        // Create console namespace with ProxyExecutable functions
         Map<String, Object> console = new HashMap<>();
-        console.put("log", new Object() {
-            @SuppressWarnings("unused")
-            public Object log(Object[] args) {
-                StringBuilder message = new StringBuilder();
-                for (Object arg : args) {
-                    if (message.length() > 0) {
-                        message.append(" ");
-                    }
-                    message.append(arg != null ? arg.toString() : "null");
-                }
-                LOGGER.info(message.toString());
-                return null;
+        console.put("log", (ProxyExecutable) args -> {
+            if (args.length > 0) {
+                LOGGER.info("[JS LOG] {}", args[0]);
             }
+            return null;
         });
-        console.put("warn", new Object() {
-            @SuppressWarnings("unused")
-            public Object warn(Object[] args) {
-                StringBuilder message = new StringBuilder();
-                for (Object arg : args) {
-                    if (message.length() > 0) {
-                        message.append(" ");
-                    }
-                    message.append(arg != null ? arg.toString() : "null");
-                }
-                LOGGER.warn(message.toString());
-                return null;
+        console.put("warn", (ProxyExecutable) args -> {
+            if (args.length > 0) {
+                LOGGER.warn("[JS WARN] {}", args[0]);
             }
+            return null;
         });
-        console.put("error", new Object() {
-            @SuppressWarnings("unused")
-            public Object error(Object[] args) {
-                StringBuilder message = new StringBuilder();
-                for (Object arg : args) {
-                    if (message.length() > 0) {
-                        message.append(" ");
-                    }
-                    message.append(arg != null ? arg.toString() : "null");
-                }
-                LOGGER.error(message.toString());
-                return null;
+        console.put("error", (ProxyExecutable) args -> {
+            if (args.length > 0) {
+                LOGGER.error("[JS ERROR] {}", args[0]);
             }
+            return null;
         });
         
-        // Inject the minimal tapestry object
-        jsContext.getBindings("js").putMember("tapestry", tapestry);
-        jsContext.getBindings("js").putMember("console", console);
+        // Create tapestry.mod namespace with define function
+        Map<String, Object> mod = new HashMap<>();
+        mod.put("define", (ProxyExecutable) args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("tapestry.mod.define requires exactly one argument");
+            }
+            
+            Object modDefinition = args[0];
+            defineFunction.define(modDefinition);
+            return null;
+        });
         
-        LOGGER.debug("Built minimal tapestry object for TS_LOAD phase");
+        // Build minimal tapestry object
+        Map<String, Object> tapestry = new HashMap<>();
+        tapestry.put("mod", ProxyObject.fromMap(mod));
+        
+        // Return the complete bindings structure
+        Map<String, Object> bindings = new HashMap<>();
+        bindings.put("tapestry", ProxyObject.fromMap(tapestry));
+        bindings.put("console", ProxyObject.fromMap(console));
+        
+        return bindings;
     }
     
     /**
-     * Extends the tapestry object for TS_READY phase.
+     * Extends the tapestry object for TS_READY phase using proper GraalVM proxies.
      * 
      * @param api frozen API to expose
      * @param hookRegistry the hook registry for hook registration
      */
     private void extendTapestryObjectForReady(TapestryAPI api, HookRegistry hookRegistry) {
-        // Get the existing tapestry object
-        Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
-        Map<String, Object> tapestry = tapestryValue.as(Map.class);
+        // Create worldgen API instance
+        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
         
-        // Add core domains
+        // Create worldgen namespace with ProxyExecutable functions
+        Map<String, Object> worldgen = new HashMap<>();
+        worldgen.put("onResolveBlock", (ProxyExecutable) args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("tapestry.worldgen.onResolveBlock requires exactly one argument");
+            }
+            
+            Object handler = args[0];
+            worldgenApi.onResolveBlock(handler);
+            return null;
+        });
+        
+        // Create extended tapestry object with all domains
+        Map<String, Object> tapestry = new HashMap<>();
+        tapestry.put("mod", ProxyObject.fromMap(Map.of("define", 
+            (ProxyExecutable) args -> {
+                if (args.length != 1) {
+                    throw new IllegalArgumentException("tapestry.mod.define requires exactly one argument");
+                }
+                Object modDefinition = args[0];
+                defineFunction.define(modDefinition);
+                return null;
+            })));
         tapestry.put("worlds", api.getWorlds());
-        tapestry.put("worldgen", api.getWorldgen());
+        tapestry.put("worldgen", ProxyObject.fromMap(worldgen));
         tapestry.put("events", api.getEvents());
         tapestry.put("core", api.getCore());
         tapestry.put("mods", api.getMods());
         
-        // Add worldgen API with hook registration
-        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
-        tapestry.put("worldgen", worldgenApi.createApiObject());
+        // Replace the tapestry object in bindings
+        jsContext.getBindings("js").putMember("tapestry", ProxyObject.fromMap(tapestry));
         
         LOGGER.debug("Extended tapestry object for TS_READY phase");
     }
