@@ -58,6 +58,9 @@ public class TypeScriptRuntime {
         }
         
         try {
+            // Clear source tracking for fresh runtime initialization
+            clearSourceTracking();
+            
             // Initialize the define function
             defineFunction = new TsModDefineFunction(modRegistry);
             
@@ -177,6 +180,9 @@ public class TypeScriptRuntime {
         // Create worldgen API instance
         TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
         
+        // Get the existing tapestry object
+        Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+        
         // Create worldgen namespace with ProxyExecutable functions
         Map<String, Object> worldgen = new HashMap<>();
         worldgen.put("onResolveBlock", (ProxyExecutable) args -> {
@@ -189,25 +195,8 @@ public class TypeScriptRuntime {
             return null;
         });
         
-        // Create extended tapestry object with all domains
-        Map<String, Object> tapestry = new HashMap<>();
-        tapestry.put("mod", ProxyObject.fromMap(Map.of("define", 
-            (ProxyExecutable) args -> {
-                if (args.length != 1) {
-                    throw new IllegalArgumentException("tapestry.mod.define requires exactly one argument");
-                }
-                Object modDefinition = args[0];
-                defineFunction.define(modDefinition);
-                return null;
-            })));
-        tapestry.put("worlds", api.getWorlds());
-        tapestry.put("worldgen", ProxyObject.fromMap(worldgen));
-        tapestry.put("events", api.getEvents());
-        tapestry.put("core", api.getCore());
-        tapestry.put("mods", api.getMods());
-        
-        // Replace the tapestry object in bindings
-        jsContext.getBindings("js").putMember("tapestry", ProxyObject.fromMap(tapestry));
+        // Extend the existing tapestry object with minimal Phase 2 domains
+        tapestryValue.putMember("worldgen", ProxyObject.fromMap(worldgen));
         
         LOGGER.debug("Extended tapestry object for TS_READY phase");
     }
@@ -388,13 +377,22 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Marks that a mod has been defined in the given source.
+     * Marks that a mod was defined in the given source.
      * 
      * @param source the source where the mod was defined
      */
     public static void markModDefinedInSource(String source) {
         synchronized (sourcesWithModDefine) {
             sourcesWithModDefine.add(source);
+        }
+    }
+    
+    /**
+     * Clears source tracking (for fresh runtime initialization).
+     */
+    public static void clearSourceTracking() {
+        synchronized (sourcesWithModDefine) {
+            sourcesWithModDefine.clear();
         }
     }
     
