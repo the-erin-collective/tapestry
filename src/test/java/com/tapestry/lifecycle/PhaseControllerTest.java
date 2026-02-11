@@ -61,10 +61,17 @@ class PhaseControllerTest {
             controller.advanceTo(TapestryPhase.BOOTSTRAP);
         });
         
-        // Test skipping phases (this should be allowed in our implementation)
+        // Test skipping phases - this should now be forbidden
         controller.advanceTo(TapestryPhase.REGISTRATION);
-        controller.advanceTo(TapestryPhase.RUNTIME);
-        assertEquals(TapestryPhase.RUNTIME, controller.getCurrentPhase());
+        
+        assertThrows(IllegalStateException.class, () -> {
+            controller.advanceTo(TapestryPhase.RUNTIME); // Skipping phases
+        });
+        
+        // Test exact next phase requirement
+        assertThrows(IllegalStateException.class, () -> {
+            controller.advanceTo(TapestryPhase.FREEZE); // Skipping TS_LOAD
+        });
     }
     
     @Test

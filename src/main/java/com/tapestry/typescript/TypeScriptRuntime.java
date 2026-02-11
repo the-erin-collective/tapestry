@@ -46,9 +46,12 @@ public class TypeScriptRuntime {
         
         try {
             // Create JavaScript context with host access enabled
+            // SECURITY NOTE: HostAccess.ALL is TEMPORARY for Phase 1 infrastructure only.
+            // This MUST be restricted before user TS execution is enabled in later phases.
+            // In Phase 1, no user TS code is executed, so this is acceptable for infrastructure.
             jsContext = Context.newBuilder("js")
-                .allowHostAccess(HostAccess.ALL) // Allow Java objects to be accessed from JS
-                .allowHostClassLookup(s -> true) // Allow class loading
+                .allowHostAccess(HostAccess.ALL) // TEMPORARY - restrict before user code execution
+                .allowHostClassLookup(s -> true)   // TEMPORARY - restrict before user code execution
                 .build();
             
             // Inject the frozen API object
@@ -153,15 +156,18 @@ public class TypeScriptRuntime {
     /**
      * Evaluates a JavaScript expression in the runtime context.
      * For Phase 1, this should only be used for internal validation.
+     * Requires TS_READY phase or later.
      * 
      * @param script the JavaScript script to evaluate
      * @return the result of the evaluation
-     * @throws IllegalStateException if the runtime is not initialized
+     * @throws IllegalStateException if the runtime is not initialized or wrong phase
      */
     public Value evaluate(String script) {
         if (!initialized) {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
+        
+        PhaseController.getInstance().requireAtLeast(TapestryPhase.TS_READY);
         
         return jsContext.eval("js", script);
     }

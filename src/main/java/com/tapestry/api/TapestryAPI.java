@@ -21,7 +21,7 @@ public class TapestryAPI {
     private final Map<String, Object> worlds;
     private final Map<String, Object> worldgen;
     private final Map<String, Object> events;
-    private final Map<String, Map<String, Object>> mods;
+    private Map<String, Map<String, Object>> mods;
     private final Map<String, Object> core;
     
     // Internal state
@@ -148,14 +148,15 @@ public class TapestryAPI {
     }
     
     /**
-     * Converts a mutable map to an unmodifiable map.
+     * Converts a mutable map to an unmodifiable map (shallow freeze).
      * 
      * @param map the map to freeze
      */
     private void freezeDomain(Map<String, Object> map) {
-        // For Phase 1, we just make the map unmodifiable
-        // In later phases, we might need to handle nested structures
-        // Note: This is a shallow freeze - deep freeze would be needed for complex objects
+        // Create unmodifiable view and replace contents
+        Map<String, Object> frozen = Collections.unmodifiableMap(new HashMap<>(map));
+        map.clear();
+        map.putAll(frozen);
     }
     
     /**

@@ -38,10 +38,13 @@ public class ExtensionRegistry {
      * Discovers all Tapestry extensions via Fabric entrypoints.
      * Must be called during DISCOVERY phase.
      * 
-     * @throws IllegalStateException if called outside DISCOVERY phase
+     * @throws IllegalStateException if called outside DISCOVERY phase or after FREEZE
      */
     public void discoverExtensions() {
         PhaseController.getInstance().requirePhase(TapestryPhase.DISCOVERY);
+        
+        // Defensive check: prevent discovery after FREEZE
+        PhaseController.getInstance().requireAtMost(TapestryPhase.REGISTRATION);
         
         if (discoveryComplete) {
             LOGGER.warn("Extension discovery already completed");
@@ -115,6 +118,9 @@ public class ExtensionRegistry {
      */
     public void registerExtensions() {
         PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
+        
+        // Defensive check: prevent registration after FREEZE
+        PhaseController.getInstance().requireAtMost(TapestryPhase.REGISTRATION);
         
         if (!discoveryComplete) {
             throw new IllegalStateException("Must complete discovery before registration");

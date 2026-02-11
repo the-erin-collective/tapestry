@@ -135,14 +135,14 @@ public class PhaseController {
     
     /**
      * Checks if a phase transition is valid.
-     * Valid transitions must advance monotonically (forward only).
+     * Valid transitions must advance to the exact next phase (no skipping).
      * 
      * @param from the current phase
      * @param to the target phase
      * @return true if the transition is valid
      */
     private boolean isValidTransition(TapestryPhase from, TapestryPhase to) {
-        return to.isAfter(from);
+        return to.ordinal() == from.ordinal() + 1;
     }
     
     /**
