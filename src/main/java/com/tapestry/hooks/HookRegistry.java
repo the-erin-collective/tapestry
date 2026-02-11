@@ -76,16 +76,16 @@ public class HookRegistry {
      * @param <TContext> the context type
      * @param <TResult> the result type
      * @param hookType the type of hook to invoke
-     * @param jsContext the JavaScript execution context
-     * @param context the context object to pass to hooks
+     * @param context the context object to pass to hooks (should contain modId)
+     * @param vanillaBlock the vanilla block value to pass as second argument
      * @return the first non-null result, or null if all hooks return null
      * @throws RuntimeException if any hook throws an exception
      */
     @SuppressWarnings("unchecked")
     public <TContext, TResult> TResult invokeHooks(
             String hookType, 
-            Context jsContext, 
-            TContext context
+            TContext context,
+            Object vanillaBlock
     ) {
         List<Hook<?, ?>> hookList = hooks.get(hookType);
         if (hookList == null || hookList.isEmpty()) {
@@ -96,8 +96,8 @@ public class HookRegistry {
         for (Hook<?, ?> hook : hookList) {
             try {
                 // Execute hook with proper signature: handler(ctx, vanillaBlock)
-                // Note: The context object should already contain the modId
-                Object result = hook.callback().execute(context);
+                // The context object should contain the modId
+                Object result = hook.callback().execute(context, vanillaBlock);
                 
                 if (result != null) {
                     LOGGER.debug("Hook '{}' from mod '{}' returned non-null result", hookType, hook.modId());

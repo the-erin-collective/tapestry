@@ -26,18 +26,16 @@ public class TsModDiscovery {
     private static final String ASSETS_DIR = "assets/tapestry/mods";
     
     /**
-     * Discovers all TypeScript mod files from both filesystem and classpath.
+     * Discovers TypeScript mod files from filesystem.
      * 
-     * @return list of discovered mod file paths in deterministic order
+     * @return list of mod file paths
      */
     public List<String> discoverMods() {
         List<String> modFiles = new ArrayList<>();
         
-        // First, scan filesystem (config/tapestry/mods)
+        // Only scan filesystem for Phase 2
+        // Classpath discovery is deferred to future phases
         scanFilesystemMods(modFiles);
-        
-        // Then, scan classpath resources (assets/tapestry/mods)
-        scanClasspathMods(modFiles);
         
         LOGGER.info("Discovered {} TypeScript mod files", modFiles.size());
         return Collections.unmodifiableList(modFiles);
@@ -96,81 +94,7 @@ public class TsModDiscovery {
             LOGGER.error("Failed to scan filesystem mods directory", e);
             throw new RuntimeException("Failed to scan filesystem mods", e);
         }
-    }
-    
-    /**
-     * Scans classpath resources for mod files.
-     * 
-     * @param modFiles list to add discovered files to
-     */
-    private void scanClasspathMods(List<String> modFiles) {
-        try {
-            // Get all resources in assets/tapestry/mods from all mod containers
-            var resources = FabricLoader.getInstance()
-                .getAllMods()
-                .stream()
-                .flatMap(container -> findResourcesInContainer(container, ASSETS_DIR))
-                .filter(path -> path.endsWith(".js"))
-                .sorted() // Alphabetical order for determinism
-                .toList();
-            
-            for (String resource : resources) {
-                modFiles.add("classpath:" + resource);
-                LOGGER.debug("Found classpath mod: {}", resource);
-            }
-            
-        } catch (Exception e) {
-            LOGGER.error("Failed to scan classpath mods directory: {}", ASSETS_DIR, e);
-            throw new RuntimeException("Failed to scan classpath mods", e);
-        }
-    }
-    
-    /**
-     * Finds resources in a given path within a mod container.
-     * Scans all mod containers for classpath scripts.
-     * 
-     * @param container the mod container to search in
-     * @param targetPath the target path within the container
-     * @return stream of resource paths
-     */
-    private Stream<String> findResourcesInContainer(Object container, String targetPath) {
-        try {
-            // This is a simplified approach that scans all mod containers
-            // In a real implementation, we'd need to properly scan the container's resources
-            // For now, we'll return empty to avoid compilation issues
-            return Stream.empty();
-        } catch (Exception e) {
-            LOGGER.error("Failed to find resources in container", e);
-            return Stream.empty();
-        }
-    }
-    
-    /**
-     * Finds resources in a given path within a root directory.
-     * 
-     * @param root the root path to search in
-     * @param targetPath the target path within the root
-     * @return stream of resource paths
-     */
-    private Stream<String> findResourcesInPath(Path root, String targetPath) {
-        try {
-            Path target = root.resolve(targetPath);
-            if (!Files.exists(target)) {
-                return Stream.empty();
-            }
-            
-            return Files.walk(target)
-                .filter(path -> !Files.isDirectory(path))
-                .filter(path -> !isHidden(path))
-                .filter(path -> path.toString().endsWith(".js"))
-                .map(path -> targetPath + "/" + target.relativize(path).toString().replace('\\', '/'));
-                
-        } catch (IOException e) {
-            LOGGER.warn("Failed to scan path {}: {}", targetPath, e.getMessage());
-            return Stream.empty();
-        }
-    }
-    
+    }    
     /**
      * Checks if a path is hidden.
      * 

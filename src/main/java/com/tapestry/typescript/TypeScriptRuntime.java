@@ -12,7 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
@@ -31,6 +33,9 @@ public class TypeScriptRuntime {
     // ThreadLocal context for tracking current script and mod
     private static final ThreadLocal<String> currentSource = new ThreadLocal<>();
     private static final ThreadLocal<String> currentModId = new ThreadLocal<>();
+    
+    // Track sources that have already defined a mod (one-define-per-file rule)
+    private static final Set<String> sourcesWithModDefine = new HashSet<>();
     
     /**
      * Initializes the TypeScript runtime with mod loading capabilities.
@@ -100,8 +105,9 @@ public class TypeScriptRuntime {
         TsModDefineFunction defineFunction = new TsModDefineFunction(modRegistry);
         modNamespace.put("define", new Object() {
             @SuppressWarnings("unused")
-            public void define(Object modDefinition) {
+            public Object define(Object modDefinition) {
                 defineFunction.define(modDefinition);
+                return null;
             }
         });
         tapestry.put("mod", modNamespace);
@@ -113,11 +119,11 @@ public class TypeScriptRuntime {
         // Inject the complete tapestry object
         jsContext.getBindings("js").putMember("tapestry", tapestry);
         
-        // Inject limited console object
+        // Inject console object
         Map<String, Object> console = new HashMap<>();
         console.put("log", new Object() {
             @SuppressWarnings("unused")
-            public void log(Object[] args) {
+            public Object log(Object[] args) {
                 StringBuilder message = new StringBuilder();
                 for (Object arg : args) {
                     if (message.length() > 0) {
@@ -126,11 +132,12 @@ public class TypeScriptRuntime {
                     message.append(arg != null ? arg.toString() : "null");
                 }
                 LOGGER.info(message.toString());
+                return null;
             }
         });
         console.put("warn", new Object() {
             @SuppressWarnings("unused")
-            public void warn(Object[] args) {
+            public Object warn(Object[] args) {
                 StringBuilder message = new StringBuilder();
                 for (Object arg : args) {
                     if (message.length() > 0) {
@@ -139,11 +146,12 @@ public class TypeScriptRuntime {
                     message.append(arg != null ? arg.toString() : "null");
                 }
                 LOGGER.warn(message.toString());
+                return null;
             }
         });
         console.put("error", new Object() {
             @SuppressWarnings("unused")
-            public void error(Object[] args) {
+            public Object error(Object[] args) {
                 StringBuilder message = new StringBuilder();
                 for (Object arg : args) {
                     if (message.length() > 0) {
@@ -152,11 +160,12 @@ public class TypeScriptRuntime {
                     message.append(arg != null ? arg.toString() : "null");
                 }
                 LOGGER.error(message.toString());
+                return null;
             }
         });
         jsContext.getBindings("js").putMember("console", console);
         
-        LOGGER.debug("Built complete tapestry object with mod.define and worldgen API");
+        LOGGER.debug("Built complete tapestry object with JS-compatible API");
     }
     
     /**
@@ -211,11 +220,14 @@ public class TypeScriptRuntime {
             // Convert Object to Value for execution
             Value onLoadFunction = Value.asValue(onLoad);
             
-            // Create API object to pass to onLoad function
-            Value apiObject = Value.asValue(api);
+            // Verify it's executable
+            if (!onLoadFunction.canExecute()) {
+                throw new IllegalArgumentException("onLoad must be an executable function");
+            }
             
-            // Execute onLoad function with API object
-            onLoadFunction.executeVoid(apiObject);
+            // Execute onLoad function with the API object
+            // The API object should be the same one exposed to JavaScript
+            onLoadFunction.executeVoid(api);
             
             LOGGER.info("Successfully executed onLoad for mod: {}", modId);
         } catch (Exception e) {
@@ -323,8 +335,9 @@ public class TypeScriptRuntime {
      * @return true if a mod was already defined in this source
      */
     public static boolean hasModDefinedInSource(String source) {
-        // Simple implementation - in a real system, this would track sources more robustly
-        return source != null && source.equals(currentSource.get());
+        synchronized (sourcesWithModDefine) {
+            return sourcesWithModDefine.contains(source);
+        }
     }
     
     /**
@@ -333,8 +346,9 @@ public class TypeScriptRuntime {
      * @param source the source where the mod was defined
      */
     public static void markModDefinedInSource(String source) {
-        // This is a simple implementation - the key is that we track this happened
-        // The actual check in hasModDefinedInSource uses the currentSource ThreadLocal
+        synchronized (sourcesWithModDefine) {
+            sourcesWithModDefine.add(source);
+        }
     }
     
     /**

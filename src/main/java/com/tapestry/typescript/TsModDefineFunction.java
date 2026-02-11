@@ -6,6 +6,8 @@ import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.regex.Pattern;
+
 import java.util.Map;
 
 /**
@@ -17,6 +19,9 @@ import java.util.Map;
 public class TsModDefineFunction {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(TsModDefineFunction.class);
+    
+    // Mod ID validation pattern: [a-z][a-z0-9_]{0,63}
+    private static final Pattern MOD_ID_PATTERN = Pattern.compile("^[a-z][a-z0-9_]{0,63}$");
     
     private final TsModRegistry registry;
     
@@ -39,33 +44,40 @@ public class TsModDefineFunction {
             throw new IllegalArgumentException("Mod definition must be an object with properties");
         }
         
-        // Convert Object to Value for member access
-        Value modDef = Value.asValue(modDefinition);
-        
-        // Extract required fields from the mod definition
-        String id = extractString(modDef, "id", "Mod ID");
-        Value onLoad = extractValue(modDef, "onLoad", "onLoad function");
-        Value onEnable = extractOptionalValue(modDef, "onEnable");
-        
-        // Enforce one define per file via current source tracking
+        // Get the current source for one-define-per-file enforcement
         String currentSource = TypeScriptRuntime.getCurrentSource();
         if (currentSource == null) {
-            throw new IllegalStateException("Cannot define mod outside of script evaluation");
+            throw new IllegalStateException("No current source context for mod definition");
         }
         
-        // Check if we already defined a mod in this source
+        // Enforce one-define-per-file rule
         if (TypeScriptRuntime.hasModDefinedInSource(currentSource)) {
-            throw new IllegalStateException("Only one mod can be defined per source file");
+            throw new IllegalStateException("Multiple tapestry.mod.define calls in source: " + currentSource);
         }
         
-        // Mark that this source has defined a mod
-        TypeScriptRuntime.markModDefinedInSource(currentSource);
+        // Convert to Value for property access
+        Value modDefValue = Value.asValue(modDefinition);
         
-        // Create and register mod definition
+        // Extract required properties
+        String id = extractString(modDefValue, "id", "mod id");
+        Value onLoad = extractValue(modDefValue, "onLoad", "onLoad function");
+        Value onEnable = extractOptionalValue(modDefValue, "onEnable");
+        
+        // Validate mod ID
+        if (!MOD_ID_PATTERN.matcher(id).matches()) {
+            throw new IllegalArgumentException("Invalid mod ID: " + id + ". Must match pattern: [a-z][a-z0-9_]{0,63}");
+        }
+        
+        // Create the mod definition
         TsModDefinition mod = new TsModDefinition(id, onLoad, onEnable, currentSource);
+        
+        // Register the mod
         registry.registerMod(mod);
         
-        LOGGER.info("Registered mod '{}' from source '{}'", id, currentSource);
+        // Mark this source as having a mod defined
+        TypeScriptRuntime.markModDefinedInSource(currentSource);
+        
+        LOGGER.info("Defined TypeScript mod '{}' from source '{}'", id, currentSource);
     }
     
     /**
