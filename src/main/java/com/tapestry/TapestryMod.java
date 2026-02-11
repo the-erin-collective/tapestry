@@ -2,131 +2,87 @@ package com.tapestry;
 
 import com.tapestry.api.TapestryAPI;
 import com.tapestry.extension.ExtensionRegistry;
+import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.typescript.TsModDiscovery;
+import com.tapestry.typescript.TsModRegistry;
 import com.tapestry.typescript.TypeScriptRuntime;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
 /**
- * Main Tapestry mod that orchestrates the Phase 1 lifecycle.
+ * Main Tapestry mod implementing Fabric's ModInitializer.
  * 
- * This class implements Fabric's ModInitializer and manages the complete
- * Phase 1 sequence: discovery → registration → freeze → TS runtime initialization.
+ * This class orchestrates the complete Phase 2 lifecycle including
+ * TypeScript mod discovery, loading, and hook registration.
  */
 public class TapestryMod implements ModInitializer {
+    
     private static final Logger LOGGER = LoggerFactory.getLogger(TapestryMod.class);
     
-    private TapestryAPI api;
-    private ExtensionRegistry extensionRegistry;
-    private TypeScriptRuntime typeScriptRuntime;
+    private static TapestryAPI api;
+    private static ExtensionRegistry extensionRegistry;
+    private static TsModRegistry modRegistry;
+    private static HookRegistry hookRegistry;
+    private static TypeScriptRuntime tsRuntime;
+    private static TsModDiscovery modDiscovery;
     
     @Override
     public void onInitialize() {
-        LOGGER.info("Starting Tapestry Phase 1 initialization");
+        LOGGER.info("Starting Tapestry Phase 2 initialization");
         
         try {
-            // Phase 1: Bootstrap (already in BOOTSTRAP from static init)
-            executeBootstrapPhase();
+            // Phase 1: Bootstrap framework
+            bootstrapFramework();
             
-            // Phase 2: Discovery
-            executeDiscoveryPhase();
+            // Phase 2: TypeScript mod loading
+            loadTypeScriptMods();
             
-            // Phase 3: Registration
-            executeRegistrationPhase();
-            
-            // Phase 4: Freeze
-            executeFreezePhase();
-            
-            // Phase 5: TS Load
-            executeTSLoadPhase();
-            
-            // Phase 6: TS Ready
-            executeTSReadyPhase();
-            
-            LOGGER.info("Tapestry Phase 1 initialization completed successfully");
+            LOGGER.info("Tapestry Phase 2 initialization completed successfully");
             
         } catch (Exception e) {
-            LOGGER.error("Tapestry Phase 1 initialization failed", e);
-            throw new RuntimeException("Tapestry initialization failed", e);
+            LOGGER.error("Tapestry initialization failed", e);
+            throw new RuntimeException("Failed to initialize Tapestry", e);
         }
     }
     
     /**
-     * Executes the BOOTSTRAP phase.
-     * Core framework initialization.
+     * Phase 1: Bootstrap the core framework.
      */
-    private void executeBootstrapPhase() {
+    private static void bootstrapFramework() {
         LOGGER.info("=== BOOTSTRAP PHASE ===");
-        
-        PhaseController phaseController = PhaseController.getInstance();
-        phaseController.requirePhase(TapestryPhase.BOOTSTRAP);
+        PhaseController.getInstance().advanceTo(TapestryPhase.BOOTSTRAP);
         
         // Initialize core components
         api = new TapestryAPI();
         extensionRegistry = new ExtensionRegistry(api);
-        typeScriptRuntime = new TypeScriptRuntime();
+        modRegistry = new TsModRegistry();
+        hookRegistry = new HookRegistry();
+        tsRuntime = new TypeScriptRuntime();
+        modDiscovery = new TsModDiscovery();
         
-        LOGGER.info("Core components initialized");
+        LOGGER.info("Core framework components initialized");
         
-        // Advance to DISCOVERY
-        phaseController.advanceTo(TapestryPhase.DISCOVERY);
-        LOGGER.info("Advanced to DISCOVERY phase");
-    }
-    
-    /**
-     * Executes the DISCOVERY phase.
-     * Discovers all Tapestry extensions via Fabric entrypoints.
-     */
-    private void executeDiscoveryPhase() {
+        // DISCOVERY: Discover Java extensions
         LOGGER.info("=== DISCOVERY PHASE ===");
-        
-        PhaseController.getInstance().requirePhase(TapestryPhase.DISCOVERY);
-        
-        // Discover extensions
+        PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
         extensionRegistry.discoverExtensions();
         
-        LOGGER.info("Discovered {} extensions", extensionRegistry.getExtensionCount());
-        
-        // Advance to REGISTRATION
-        PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
-        LOGGER.info("Advanced to REGISTRATION phase");
-    }
-    
-    /**
-     * Executes the REGISTRATION phase.
-     * Registers all discovered extensions and allows them to extend the API.
-     */
-    private void executeRegistrationPhase() {
+        // REGISTRATION: Register Java extensions
         LOGGER.info("=== REGISTRATION PHASE ===");
-        
-        PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
-        
-        // Register extensions
+        PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         extensionRegistry.registerExtensions();
         
-        LOGGER.info("Registered {} extensions with capabilities: {}", 
-            extensionRegistry.getExtensionCount(),
-            extensionRegistry.getRegisteredCapabilities());
-        
-        // Advance to FREEZE
-        PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
-        LOGGER.info("Advanced to FREEZE phase");
-    }
-    
-    /**
-     * Executes the FREEZE phase.
-     * Permanently freezes the API surface.
-     */
-    private void executeFreezePhase() {
+        // FREEZE: Lock API surface
         LOGGER.info("=== FREEZE PHASE ===");
-        
-        PhaseController.getInstance().requirePhase(TapestryPhase.FREEZE);
-        
-        // Freeze the API
+        PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         api.freeze();
         
+        LOGGER.info("Framework bootstrap complete");
         LOGGER.info("API surface frozen - no further modifications allowed");
         
         // Advance to TS_LOAD
