@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class PhaseController {
     private static final Logger LOGGER = LoggerFactory.getLogger(PhaseController.class);
     
-    private static final PhaseController INSTANCE = new PhaseController();
+    private static volatile PhaseController instance;
     
     private final AtomicReference<TapestryPhase> currentPhase;
     private volatile Instant phaseTransitionTime;
@@ -27,12 +27,20 @@ public class PhaseController {
     }
     
     /**
-     * Gets the singleton instance of the PhaseController.
+     * Gets the singleton instance.
      * 
-     * @return the global phase controller
+     * @return the phase controller instance
      */
     public static PhaseController getInstance() {
-        return INSTANCE;
+        PhaseController result = instance;
+        if (result == null) {
+            synchronized (PhaseController.class) {
+                if (instance == null) {
+                    instance = result = new PhaseController();
+                }
+            }
+        }
+        return result;
     }
     
     /**
@@ -168,5 +176,15 @@ public class PhaseController {
             }
         }
         return false;
+    }
+    
+    /**
+     * Resets the phase controller to initial state for testing.
+     * This should only be used in test code.
+     */
+    public static void reset() {
+        synchronized (PhaseController.class) {
+            instance = null;
+        }
     }
 }

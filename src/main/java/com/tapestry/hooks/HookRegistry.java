@@ -95,13 +95,12 @@ public class HookRegistry {
         // Hooks are already in registration order due to sequential registration
         for (Hook<?, ?> hook : hookList) {
             try {
-                Value result = jsContext.asValue(
-                    arguments -> hook.callback().execute(arguments)
-                ).execute(context, hook.modId());
+                // Execute hook with proper signature: handler(ctx, vanillaBlock)
+                Object result = hook.callback().execute(context, hook.modId());
                 
-                if (result != null && !result.isNull()) {
+                if (result != null) {
                     LOGGER.debug("Hook '{}' from mod '{}' returned non-null result", hookType, hook.modId());
-                    return (TResult) result.as(Object.class);
+                    return (TResult) result;
                 }
                 
             } catch (Exception e) {

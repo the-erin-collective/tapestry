@@ -12,6 +12,14 @@ base {
 
 repositories {
     mavenCentral()
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'GraalVM'
+        url = 'https://repo1.maven.org/maven2/'
+    }
 }
 
 dependencies {
@@ -23,9 +31,9 @@ dependencies {
     // Minimal Fabric API - only what we need for Phase 1
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     
-    // GraalVM Polyglot for TypeScript runtime
-    implementation 'org.graalvm.sdk:graal-sdk:23.1.0'
-    implementation 'org.graalvm.js:js:23.1.0'
+    // GraalVM Polyglot for TypeScript runtime - use compatible versions
+    implementation 'org.graalvm.sdk:graal-sdk:23.0.0'
+    implementation 'org.graalvm.js:js:23.0.0'
     
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'

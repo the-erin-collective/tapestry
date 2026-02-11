@@ -85,46 +85,88 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("Framework bootstrap complete");
         LOGGER.info("API surface frozen - no further modifications allowed");
         
-        // Advance to TS_LOAD
-        PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
-        LOGGER.info("Advanced to TS_LOAD phase");
     }
     
     /**
-     * Executes the TS_LOAD phase.
-     * Initializes the TypeScript runtime with the frozen API.
+     * Phase 2: Load TypeScript mods.
      */
-    private void executeTSLoadPhase() {
+    private static void loadTypeScriptMods() {
+        // TS_LOAD: Initialize runtime and discover mods
         LOGGER.info("=== TS_LOAD PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
         
-        PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
+        // Initialize TypeScript runtime with mod loading capabilities
+        tsRuntime.initializeForModLoading(api, modRegistry, hookRegistry);
         
-        // Initialize TypeScript runtime
-        typeScriptRuntime.initialize(api);
+        // Discover all TypeScript mod files
+        List<String> modFiles = modDiscovery.discoverMods();
         
-        LOGGER.info("TypeScript runtime initialized with frozen API");
+        // Evaluate all mod scripts (mod definition only)
+        for (String modFile : modFiles) {
+            try {
+                String source = readModSource(modFile);
+                String sourceName = extractSourceName(modFile);
+                tsRuntime.evaluateScript(source, sourceName);
+                LOGGER.debug("Loaded mod script: {}", sourceName);
+            } catch (Exception e) {
+                LOGGER.error("Failed to load mod: {}", modFile, e);
+                throw new RuntimeException("Mod loading failed: " + modFile, e);
+            }
+        }
         
-        // Advance to TS_READY
+        // Complete discovery phase
+        modRegistry.completeDiscovery();
+        
+        // TS_READY: Execute onLoad functions and allow hook registration
+        LOGGER.info("=== TS_READY PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
-        LOGGER.info("Advanced to TS_READY phase");
+        
+        // Allow hook registration
+        hookRegistry.allowRegistration();
+        
+        // Execute onLoad for all mods in deterministic order
+        for (var mod : modRegistry.getMods()) {
+            try {
+                LOGGER.info("Executing onLoad for mod: {}", mod.id());
+                tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id(), api);
+                LOGGER.debug("Completed onLoad for mod: {}", mod.id());
+            } catch (Exception e) {
+                LOGGER.error("Mod {} threw exception in onLoad", mod.id(), e);
+                throw new RuntimeException("Mod onLoad failed: " + mod.id(), e);
+            }
+        }
+        
+        // Complete loading phase
+        modRegistry.completeLoading();
+        
+        // Disallow further hook registration
+        hookRegistry.disallowRegistration();
+        
+        LOGGER.info("TypeScript mod loading complete");
     }
     
     /**
-     * Executes the TS_READY phase.
-     * In Phase 1, this is a no-op since we don't execute user TS code yet.
+     * Reads the contents of a mod file.
+     * 
+     * @param modFile path to mod file
+     * @return file contents
      */
-    private void executeTSReadyPhase() {
-        LOGGER.info("=== TS_READY PHASE ===");
-        
-        PhaseController.getInstance().requirePhase(TapestryPhase.TS_READY);
-        
-        // In Phase 1, we don't execute any user TS code
-        // This phase exists to establish the lifecycle pattern
-        LOGGER.info("TS_READY phase completed (no user code execution in Phase 1)");
-        
-        // Note: We don't advance to RUNTIME in Phase 1
-        // RUNTIME will be reached when the server actually starts
-        LOGGER.info("Phase 1 complete - waiting for server start to reach RUNTIME");
+    private static String readModSource(String modFile) {
+        try {
+            return java.nio.file.Files.readString(java.nio.file.Paths.get(modFile));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to read mod file: " + modFile, e);
+        }
+    }
+    
+    /**
+     * Extracts the source name from a file path.
+     * 
+     * @param modFile full path to mod file
+     * @return source name
+     */
+    private static String extractSourceName(String modFile) {
+        return java.nio.file.Paths.get(modFile).getFileName().toString();
     }
     
     /**
@@ -154,7 +196,7 @@ public class TapestryMod implements ModInitializer {
      * @return the TypeScriptRuntime instance
      */
     public TypeScriptRuntime getTypeScriptRuntime() {
-        return typeScriptRuntime;
+        return tsRuntime;
     }
     
     /**
@@ -164,8 +206,9 @@ public class TapestryMod implements ModInitializer {
     public void shutdown() {
         LOGGER.info("Shutting down Tapestry");
         
-        if (typeScriptRuntime != null) {
-            typeScriptRuntime.close();
+        if (tsRuntime != null) {
+            // Note: TypeScriptRuntime doesn't have a close method in current implementation
+            // This can be added later if needed
         }
         
         LOGGER.info("Tapestry shutdown complete");

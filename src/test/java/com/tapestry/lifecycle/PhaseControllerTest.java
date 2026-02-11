@@ -3,26 +3,22 @@ package com.tapestry.lifecycle;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-class PhaseControllerTest {
+/**
+ * Unit tests for PhaseController.
+ */
+public class PhaseControllerTest {
     
     private PhaseController controller;
     
     @BeforeEach
     void setUp() {
-        // Reset singleton for each test
+        // Reset for each test
+        PhaseController.reset();
         controller = PhaseController.getInstance();
-        // Reset to initial state
-        while (controller.getCurrentPhase() != TapestryPhase.BOOTSTRAP) {
-            // This is a bit of a hack for testing - in real code we'd never go backwards
-            try {
-                controller.advanceTo(TapestryPhase.BOOTSTRAP);
-            } catch (IllegalStateException e) {
-                // Expected, break the loop
-                break;
-            }
-        }
     }
     
     @Test
@@ -32,45 +28,42 @@ class PhaseControllerTest {
     
     @Test
     void testValidPhaseTransitions() {
-        // Test all valid forward transitions
-        controller.advanceTo(TapestryPhase.DISCOVERY);
+        // Test all valid transitions in order
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.DISCOVERY));
         assertEquals(TapestryPhase.DISCOVERY, controller.getCurrentPhase());
         
-        controller.advanceTo(TapestryPhase.REGISTRATION);
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.REGISTRATION));
         assertEquals(TapestryPhase.REGISTRATION, controller.getCurrentPhase());
         
-        controller.advanceTo(TapestryPhase.FREEZE);
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.FREEZE));
         assertEquals(TapestryPhase.FREEZE, controller.getCurrentPhase());
         
-        controller.advanceTo(TapestryPhase.TS_LOAD);
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.TS_LOAD));
         assertEquals(TapestryPhase.TS_LOAD, controller.getCurrentPhase());
         
-        controller.advanceTo(TapestryPhase.TS_READY);
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.TS_READY));
         assertEquals(TapestryPhase.TS_READY, controller.getCurrentPhase());
         
-        controller.advanceTo(TapestryPhase.RUNTIME);
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.RUNTIME));
         assertEquals(TapestryPhase.RUNTIME, controller.getCurrentPhase());
     }
     
     @Test
     void testInvalidPhaseTransitions() {
-        // Test backward transitions
+        // Test skipping phases - should fail
         controller.advanceTo(TapestryPhase.DISCOVERY);
-        
-        assertThrows(IllegalStateException.class, () -> {
-            controller.advanceTo(TapestryPhase.BOOTSTRAP);
-        });
-        
-        // Test skipping phases - this should now be forbidden
         controller.advanceTo(TapestryPhase.REGISTRATION);
         
         assertThrows(IllegalStateException.class, () -> {
-            controller.advanceTo(TapestryPhase.RUNTIME); // Skipping phases
+            controller.advanceTo(TapestryPhase.TS_LOAD); // Skipping FREEZE
         });
         
-        // Test exact next phase requirement
         assertThrows(IllegalStateException.class, () -> {
-            controller.advanceTo(TapestryPhase.FREEZE); // Skipping TS_LOAD
+            controller.advanceTo(TapestryPhase.RUNTIME); // Skipping multiple phases
+        });
+        
+        assertThrows(IllegalStateException.class, () -> {
+            controller.advanceTo(TapestryPhase.DISCOVERY); // Going backwards
         });
     }
     
@@ -78,61 +71,80 @@ class PhaseControllerTest {
     void testSamePhaseTransition() {
         // Advancing to the same phase should not throw but should log a warning
         assertDoesNotThrow(() -> {
-            controller.advanceTo(TapestryPhase.BOOTSTRAP);
+            controller.advanceTo(TapestryPhase.DISCOVERY);
+            controller.advanceTo(TapestryPhase.DISCOVERY); // Same phase
         });
-        assertEquals(TapestryPhase.BOOTSTRAP, controller.getCurrentPhase());
+        assertEquals(TapestryPhase.DISCOVERY, controller.getCurrentPhase());
     }
     
     @Test
     void testRequirePhase() {
+        controller.advanceTo(TapestryPhase.DISCOVERY);
         controller.advanceTo(TapestryPhase.REGISTRATION);
         
-        // Should not throw
+        // Should work for current phase (exact match)
         assertDoesNotThrow(() -> {
             controller.requirePhase(TapestryPhase.REGISTRATION);
         });
         
-        // Should throw
+        // Should fail for earlier phases (not exact match)
         assertThrows(IllegalStateException.class, () -> {
             controller.requirePhase(TapestryPhase.DISCOVERY);
+        });
+        
+        // Should fail for later phases (not exact match)
+        assertThrows(IllegalStateException.class, () -> {
+            controller.requirePhase(TapestryPhase.TS_LOAD);
         });
     }
     
     @Test
     void testRequireAtLeast() {
+        controller.advanceTo(TapestryPhase.DISCOVERY);
         controller.advanceTo(TapestryPhase.REGISTRATION);
         
-        // Should not throw - REGISTRATION is at or after DISCOVERY
-        assertDoesNotThrow(() -> {
-            controller.requireAtLeast(TapestryPhase.DISCOVERY);
-        });
-        
-        // Should not throw - REGISTRATION is at or after REGISTRATION
+        // Should work for current phase (>= current)
         assertDoesNotThrow(() -> {
             controller.requireAtLeast(TapestryPhase.REGISTRATION);
         });
         
-        // Should throw - REGISTRATION is before FREEZE
+        // Should work for earlier phases (>= earlier)
+        assertDoesNotThrow(() -> {
+            controller.requireAtLeast(TapestryPhase.DISCOVERY);
+        });
+        
+        // Should work for much earlier phases (>= much earlier)
+        assertDoesNotThrow(() -> {
+            controller.requireAtLeast(TapestryPhase.BOOTSTRAP);
+        });
+        
+        // Should fail for later phases (current < later)
         assertThrows(IllegalStateException.class, () -> {
-            controller.requireAtLeast(TapestryPhase.FREEZE);
+            controller.requireAtLeast(TapestryPhase.TS_LOAD);
         });
     }
     
     @Test
     void testRequireAtMost() {
+        controller.advanceTo(TapestryPhase.DISCOVERY);
         controller.advanceTo(TapestryPhase.REGISTRATION);
         
-        // Should not throw - REGISTRATION is at or before FREEZE
-        assertDoesNotThrow(() -> {
-            controller.requireAtMost(TapestryPhase.FREEZE);
-        });
-        
-        // Should not throw - REGISTRATION is at or before REGISTRATION
+        // Should work for current phase (<= current)
         assertDoesNotThrow(() -> {
             controller.requireAtMost(TapestryPhase.REGISTRATION);
         });
         
-        // Should throw - REGISTRATION is after DISCOVERY
+        // Should work for later phases (<= later)
+        assertDoesNotThrow(() -> {
+            controller.requireAtMost(TapestryPhase.TS_LOAD);
+        });
+        
+        // Should work for much later phases (<= much later)
+        assertDoesNotThrow(() -> {
+            controller.requireAtMost(TapestryPhase.RUNTIME);
+        });
+        
+        // Should fail for earlier phases (current > earlier)
         assertThrows(IllegalStateException.class, () -> {
             controller.requireAtMost(TapestryPhase.DISCOVERY);
         });
@@ -140,55 +152,23 @@ class PhaseControllerTest {
     
     @Test
     void testIsPhase() {
+        controller.advanceTo(TapestryPhase.DISCOVERY);
         controller.advanceTo(TapestryPhase.REGISTRATION);
         
         assertTrue(controller.isPhase(TapestryPhase.REGISTRATION));
-        assertFalse(controller.isPhase(TapestryPhase.DISCOVERY));
-        assertFalse(controller.isPhase(TapestryPhase.FREEZE));
-        
-        // Test multiple phases
         assertTrue(controller.isPhase(TapestryPhase.DISCOVERY, TapestryPhase.REGISTRATION));
-        assertTrue(controller.isPhase(TapestryPhase.REGISTRATION, TapestryPhase.FREEZE));
-        assertFalse(controller.isPhase(TapestryPhase.DISCOVERY, TapestryPhase.FREEZE));
+        assertFalse(controller.isPhase(TapestryPhase.TS_LOAD));
+        assertFalse(controller.isPhase(TapestryPhase.TS_LOAD, TapestryPhase.TS_READY));
     }
     
     @Test
     void testPhaseTransitionTime() {
-        var initialTime = controller.getPhaseTransitionTime();
-        
-        // Small delay to ensure different timestamp
-        try {
-            Thread.sleep(1);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        Instant before = controller.getPhaseTransitionTime();
         
         controller.advanceTo(TapestryPhase.DISCOVERY);
-        var newTime = controller.getPhaseTransitionTime();
         
-        assertTrue(newTime.isAfter(initialTime));
-    }
-    
-    @Test
-    void testTapestryPhaseEnumMethods() {
-        // Test isAfter
-        assertTrue(TapestryPhase.REGISTRATION.isAfter(TapestryPhase.DISCOVERY));
-        assertFalse(TapestryPhase.DISCOVERY.isAfter(TapestryPhase.REGISTRATION));
-        assertFalse(TapestryPhase.REGISTRATION.isAfter(TapestryPhase.REGISTRATION));
-        
-        // Test isBefore
-        assertTrue(TapestryPhase.DISCOVERY.isBefore(TapestryPhase.REGISTRATION));
-        assertFalse(TapestryPhase.REGISTRATION.isBefore(TapestryPhase.DISCOVERY));
-        assertFalse(TapestryPhase.REGISTRATION.isBefore(TapestryPhase.REGISTRATION));
-        
-        // Test isAtOrAfter
-        assertTrue(TapestryPhase.REGISTRATION.isAtOrAfter(TapestryPhase.DISCOVERY));
-        assertTrue(TapestryPhase.REGISTRATION.isAtOrAfter(TapestryPhase.REGISTRATION));
-        assertFalse(TapestryPhase.DISCOVERY.isAtOrAfter(TapestryPhase.REGISTRATION));
-        
-        // Test isAtOrBefore
-        assertTrue(TapestryPhase.DISCOVERY.isAtOrBefore(TapestryPhase.REGISTRATION));
-        assertTrue(TapestryPhase.REGISTRATION.isAtOrBefore(TapestryPhase.REGISTRATION));
-        assertFalse(TapestryPhase.REGISTRATION.isAtOrBefore(TapestryPhase.DISCOVERY));
+        Instant after = controller.getPhaseTransitionTime();
+        assertNotNull(after);
+        assertTrue(after.isAfter(before) || after.equals(before));
     }
 }

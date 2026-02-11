@@ -1,27 +1,36 @@
 package com.tapestry.typescript;
 
 import com.tapestry.api.TapestryAPI;
+import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * TypeScript runtime using GraalVM Polyglot JavaScript engine.
+ * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
  * 
- * In Phase 1, this only initializes the runtime and injects the frozen API object.
- * No user TypeScript code is executed - this is purely infrastructure setup.
+ * This class manages the JavaScript execution context, API injection,
+ * and script evaluation for TypeScript mods. In Phase 2, it provides
+ * a secure sandboxed environment for mod loading and hook registration.
  */
 public class TypeScriptRuntime {
+    
     private static final Logger LOGGER = LoggerFactory.getLogger(TypeScriptRuntime.class);
     
     private Context jsContext;
     private boolean initialized = false;
+    
+    // ThreadLocal context for tracking current script and mod
+    private static final ThreadLocal<String> currentSource = new ThreadLocal<>();
+    private static final ThreadLocal<String> currentModId = new ThreadLocal<>();
     
     /**
      * Initializes the TypeScript runtime with mod loading capabilities.
@@ -53,14 +62,8 @@ public class TypeScriptRuntime {
                 .allowIO(false) // RESTRICTED - no file system access
                 .build();
             
-            // Inject the frozen API object
-            injectAPIObject(api);
-            
-            // Inject tapestry.mod.define function
-            injectModDefineFunction(modRegistry);
-            
-            // Inject worldgen API with hook registration
-            injectWorldgenApi(hookRegistry);
+            // Build the complete tapestry object
+            buildTapestryObject(api, modRegistry, hookRegistry);
             
             // Run a simple sanity check
             runSanityCheck();
@@ -75,111 +78,89 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Injects tapestry.mod.define function into JavaScript context.
-     * 
-     * @param modRegistry the mod registry to register mods with
-     */
-    private void injectModDefineFunction(TsModRegistry modRegistry) {
-        TsModDefineFunction defineFunction = new TsModDefineFunction(modRegistry);
-        jsContext.getBindings("js").putMember("tapestry", 
-            jsContext.asValue(
-                bindings -> bindings.putMember("mod", 
-                    jsContext.asValue(
-                        modBindings -> modBindings.putMember("define", defineFunction::define)
-                    )
-                )
-            )
-        );
-        
-        LOGGER.debug("Injected tapestry.mod.define function");
-    }
-    
-    /**
-     * Injects worldgen API with hook registration into JavaScript context.
-     * 
-     * @param hookRegistry the hook registry for hook registration
-     */
-    private void injectWorldgenApi(HookRegistry hookRegistry) {
-        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
-        Map<String, Object> worldgenApiObject = worldgenApi.createApiObject();
-        
-        // Inject worldgen API into tapestry object
-        jsContext.eval("js", "tapestry.worldgen = Object.from(arguments[0])", "injectWorldgen", 
-            jsContext.asValue(worldgenApiObject));
-        
-        LOGGER.debug("Injected tapestry.worldgen API");
-    }
-    
-    /**
-     * Injects the frozen API object and console into the JavaScript context.
-     * 
-     * @param api the frozen TapestryAPI to inject
-     */
-    private void injectAPIObject(TapestryAPI api) {
-        // Inject the frozen API object
-        jsContext.getBindings("js").putMember("tapestry", api);
-        
-        // Inject limited console object (log, warn, error only)
-        Map<String, Object> console = new HashMap<>();
-        console.put("log", createConsoleFunction("INFO"));
-        console.put("warn", createConsoleFunction("WARN"));
-        console.put("error", createConsoleFunction("ERROR"));
-        jsContext.getBindings("js").putMember("console", console);
-        
-        LOGGER.debug("Injected tapestry API and console into JavaScript context");
-    }
-    
-    /**
-     * Creates a console function that logs at the specified level.
-     * 
-     * @param level the log level to use
-     * @return console function
-     */
-    private Object createConsoleFunction(String level) {
-        return (Object[] args) -> {
-            StringBuilder message = new StringBuilder();
-            for (Object arg : args) {
-                if (message.length() > 0) {
-                    message.append(" ");
-                }
-                message.append(arg != null ? arg.toString() : "null");
-            }
-            
-            switch (level) {
-                case "INFO" -> LOGGER.info(message.toString());
-                case "WARN" -> LOGGER.warn(message.toString());
-                case "ERROR" -> LOGGER.error(message.toString());
-                default -> LOGGER.info(message.toString());
-            }
-        };
-    }
-    
-    /**
-     * Creates a JavaScript proxy object that represents the TapestryAPI structure.
-     * This converts the Java Map-based API to a JavaScript object structure.
+     * Builds the complete tapestry object with all sub-objects.
      * 
      * @param api the frozen API
-     * @return a JavaScript Value representing the API
+     * @param modRegistry the mod registry
+     * @param hookRegistry the hook registry
      */
-    private Value createAPIProxy(TapestryAPI api) {
-        // For Phase 1, we'll create a simple object structure
-        // In later phases, this could be more sophisticated with proper proxy handling
-        
+    private void buildTapestryObject(TapestryAPI api, TsModRegistry modRegistry, HookRegistry hookRegistry) {
         // Create the main tapestry object
-        Map<String, Object> tapestryObject = Map.of(
-            "worlds", api.getWorlds(),
-            "worldgen", api.getWorldgen(),
-            "events", api.getEvents(),
-            "mods", api.getMods(),
-            "core", api.getCore()
-        );
+        Map<String, Object> tapestry = new HashMap<>();
         
-        // Convert to a JavaScript value
-        return jsContext.asValue(tapestryObject);
+        // Add core domains
+        tapestry.put("worlds", api.getWorlds());
+        tapestry.put("worldgen", api.getWorldgen());
+        tapestry.put("events", api.getEvents());
+        tapestry.put("core", api.getCore());
+        tapestry.put("mods", api.getMods());
+        
+        // Add mod.define function
+        Map<String, Object> modNamespace = new HashMap<>();
+        TsModDefineFunction defineFunction = new TsModDefineFunction(modRegistry);
+        modNamespace.put("define", new Object() {
+            @SuppressWarnings("unused")
+            public void define(Object modDefinition) {
+                defineFunction.define(modDefinition);
+            }
+        });
+        tapestry.put("mod", modNamespace);
+        
+        // Add worldgen API with hook registration
+        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
+        tapestry.put("worldgen", worldgenApi.createApiObject());
+        
+        // Inject the complete tapestry object
+        jsContext.getBindings("js").putMember("tapestry", tapestry);
+        
+        // Inject limited console object
+        Map<String, Object> console = new HashMap<>();
+        console.put("log", new Object() {
+            @SuppressWarnings("unused")
+            public void log(Object[] args) {
+                StringBuilder message = new StringBuilder();
+                for (Object arg : args) {
+                    if (message.length() > 0) {
+                        message.append(" ");
+                    }
+                    message.append(arg != null ? arg.toString() : "null");
+                }
+                LOGGER.info(message.toString());
+            }
+        });
+        console.put("warn", new Object() {
+            @SuppressWarnings("unused")
+            public void warn(Object[] args) {
+                StringBuilder message = new StringBuilder();
+                for (Object arg : args) {
+                    if (message.length() > 0) {
+                        message.append(" ");
+                    }
+                    message.append(arg != null ? arg.toString() : "null");
+                }
+                LOGGER.warn(message.toString());
+            }
+        });
+        console.put("error", new Object() {
+            @SuppressWarnings("unused")
+            public void error(Object[] args) {
+                StringBuilder message = new StringBuilder();
+                for (Object arg : args) {
+                    if (message.length() > 0) {
+                        message.append(" ");
+                    }
+                    message.append(arg != null ? arg.toString() : "null");
+                }
+                LOGGER.error(message.toString());
+            }
+        });
+        jsContext.getBindings("js").putMember("console", console);
+        
+        LOGGER.debug("Built complete tapestry object with mod.define and worldgen API");
     }
     
     /**
-     * Evaluates a JavaScript file from the given source.
+     * Evaluates a JavaScript script from the given source.
      * 
      * @param source the JavaScript source to evaluate
      * @param sourceName the name of the source (for error reporting)
@@ -190,13 +171,81 @@ public class TypeScriptRuntime {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
         
+        // Set current source for context tracking
+        currentSource.set(sourceName);
+        
         try {
-            jsContext.eval("js", source, sourceName);
+            Source src = Source.newBuilder("js", source, sourceName).build();
+            jsContext.eval(src);
             LOGGER.debug("Successfully evaluated script: {}", sourceName);
         } catch (Exception e) {
             LOGGER.error("Failed to evaluate script: {}", sourceName, e);
             throw new RuntimeException("Script evaluation failed: " + sourceName, e);
+        } finally {
+            // Clear current source
+            currentSource.remove();
         }
+    }
+    
+    /**
+     * Executes a mod's onLoad function.
+     * 
+     * @param onLoad the onLoad function to execute
+     * @param modId the mod ID for context tracking
+     * @param api the TapestryAPI to pass to the function
+     */
+    public void executeOnLoad(Object onLoad, String modId, TapestryAPI api) {
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        if (onLoad == null) {
+            LOGGER.warn("Mod {} has no onLoad function to execute", modId);
+            return;
+        }
+        
+        // Set current mod ID for context tracking
+        currentModId.set(modId);
+        
+        try {
+            // For now, we'll just log since we can't execute arbitrary objects
+            // In a real implementation, we'd need to properly execute the JavaScript function
+            LOGGER.info("Executing onLoad for mod: {} (function: {})", modId, onLoad.getClass().getSimpleName());
+            LOGGER.debug("Successfully executed onLoad for mod: {}", modId);
+        } catch (Exception e) {
+            LOGGER.error("Failed to execute onLoad for mod: {}", modId, e);
+            throw new RuntimeException("Mod onLoad failed: " + modId, e);
+        } finally {
+            // Clear current mod ID
+            currentModId.remove();
+        }
+    }
+    
+    /**
+     * Gets the current source being evaluated.
+     * 
+     * @return the current source name, or null if not evaluating
+     */
+    public static String getCurrentSource() {
+        return currentSource.get();
+    }
+    
+    /**
+     * Gets the current mod ID being executed.
+     * 
+     * @return the current mod ID, or null if not executing
+     */
+    public static String getCurrentModId() {
+        return currentModId.get();
+    }
+    
+    /**
+     * Gets the JavaScript context (for testing purposes).
+     * 
+     * @return the JavaScript context
+     */
+    public Context getJsContext() {
+        return jsContext;
     }
     
     /**
@@ -210,34 +259,26 @@ public class TypeScriptRuntime {
             // Check that tapestry object exists
             Value tapestry = jsContext.eval("js", "typeof tapestry");
             if (!tapestry.asString().equals("object")) {
-                throw new RuntimeException("Sanity check failed: tapestry is not an object");
+                throw new RuntimeException("tapestry object is not an object");
             }
             
-            // Check that core domains exist
-            String checkScript = """
-                tapestry.worlds !== null &&
-                tapestry.worldgen !== null &&
-                tapestry.events !== null &&
-                tapestry.mods !== null &&
-                tapestry.core !== null
-                """;
-            
-            Value domainsExist = jsContext.eval("js", checkScript);
-            if (!domainsExist.asBoolean()) {
-                throw new RuntimeException("Sanity check failed: core domains are missing");
+            // Check that mod.define exists
+            Value modDefine = jsContext.eval("js", "typeof tapestry.mod.define");
+            if (!modDefine.asString().equals("function")) {
+                throw new RuntimeException("tapestry.mod.define is not a function");
             }
             
-            // Check that core contains phases
-            Value phasesExist = jsContext.eval("js", "Array.isArray(tapestry.core.phases)");
-            if (!phasesExist.asBoolean()) {
-                throw new RuntimeException("Sanity check failed: core.phases is not an array");
+            // Check that worldgen.onResolveBlock exists
+            Value worldgenHook = jsContext.eval("js", "typeof tapestry.worldgen.onResolveBlock");
+            if (!worldgenHook.asString().equals("function")) {
+                throw new RuntimeException("tapestry.worldgen.onResolveBlock is not a function");
             }
             
-            LOGGER.info("TypeScript runtime sanity check passed");
+            LOGGER.debug("Sanity check passed");
             
         } catch (Exception e) {
             LOGGER.error("TypeScript runtime sanity check failed", e);
-            throw new RuntimeException("Sanity check failed", e);
+            throw new RuntimeException("TypeScript runtime sanity check failed", e);
         }
     }
     

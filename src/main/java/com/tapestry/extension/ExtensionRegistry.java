@@ -138,7 +138,7 @@ public class ExtensionRegistry {
                 LOGGER.info("Registering extension: {}", discovered.descriptor.id());
                 
                 TapestryExtensionContext context = 
-                    new TapestryExtensionContext(discovered.descriptor.id(), api);
+                    new TapestryExtensionContext(api, TapestryPhase.REGISTRATION);
                 
                 discovered.provider.register(context);
                 

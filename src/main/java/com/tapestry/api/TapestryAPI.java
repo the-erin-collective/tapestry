@@ -1,216 +1,185 @@
 package com.tapestry.api;
 
+import com.tapestry.extension.TapestryExtensionContext;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Core API surface that will eventually be exposed to TypeScript.
+ * The core Tapestry API surface exposed to TypeScript mods.
  * 
- * In Phase 1, this contains empty domains but provides the structure
- * and enforcement mechanisms for future API extensions.
+ * This class represents the main API object that gets injected into the JavaScript context.
+ * It provides access to various domains (worlds, worldgen, events, mods, core) and manages
+ * the lifecycle of API extensions and mod registrations.
  */
 public class TapestryAPI {
+    
     private static final Logger LOGGER = LoggerFactory.getLogger(TapestryAPI.class);
     
-    // Core domains - these are main API namespaces
-    private final GuardedMap<String, Object> worlds;
-    private final GuardedMap<String, Object> worldgen;
-    private final GuardedMap<String, Object> events;
-    private final GuardedMap<String, Map<String, Object>> mods;
-    private final GuardedMap<String, Object> core;
+    private final GuardedMap<String, Object> domains = new GuardedMap<>();
+    private final GuardedMap<String, Object> mods = new GuardedMap<>();
+    private boolean frozen = false;
+    private Instant freezeTime;
     
-    // Internal state
-    private volatile boolean frozen = false;
-    
+    /**
+     * Creates a new TapestryAPI instance with default domains.
+     */
     public TapestryAPI() {
-        // Initialize domains as GuardedMap instances
-        this.worlds = new GuardedMap<>();
-        this.worldgen = new GuardedMap<>();
-        this.events = new GuardedMap<>();
-        this.mods = new GuardedMap<>();
-        this.core = new GuardedMap<>();
+        // Initialize default domains
+        domains.put("worlds", new HashMap<String, Object>());
+        domains.put("worldgen", new HashMap<String, Object>());
+        domains.put("events", new HashMap<String, Object>());
+        domains.put("core", new HashMap<String, Object>());
         
-        // Initialize core with phase information
-        this.core.put("phases", Arrays.asList(TapestryPhase.values()));
-        this.core.put("capabilities", new ArrayList<>());
-        
-        LOGGER.debug("TapestryAPI initialized with empty domains");
+        LOGGER.debug("TapestryAPI initialized with default domains");
     }
     
     /**
-     * Extends a core domain with a new property.
-     * Only allowed during REGISTRATION phase and before freeze.
+     * Extends a domain with additional API methods.
      * 
-     * @param domain the domain to extend
-     * @param key the property key
-     * @param value the property value
-     * @throws IllegalStateException if called outside REGISTRATION or after freeze
-     * @throws IllegalArgumentException if the property already exists
+     * @param domainName domain to extend
+     * @param extensions extensions to add
+     * @throws IllegalStateException if API is frozen
      */
-    public void extendDomain(String domain, String key, Object value) {
-        PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
-        
+    public void extendDomain(String domainName, Map<String, Object> extensions) {
         if (frozen) {
-            throw new IllegalStateException("Cannot extend domain " + domain + ": API is frozen");
+            throw new IllegalStateException("Cannot extend domain after API is frozen");
         }
         
-        Map<String, Object> domainMap = getDomainMap(domain);
-        if (domainMap.containsKey(key)) {
-            throw new IllegalArgumentException(
-                String.format("Domain %s already contains key '%s'", domain, key)
-            );
+        if (!domains.containsKey(domainName)) {
+            throw new IllegalArgumentException("Unknown domain: " + domainName);
         }
         
-        domainMap.put(key, value);
-        LOGGER.debug("Extended domain {} with key {} = {}", domain, key, value);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> domainMap = (Map<String, Object>) domains.get(domainName);
+        domainMap.putAll(extensions);
+        
+        LOGGER.debug("Extended domain '{}' with {} methods", domainName, extensions.size());
     }
     
     /**
-     * Registers a mod-owned API under the mods namespace.
-     * Only allowed during REGISTRATION phase and before freeze.
+     * Registers a mod's API surface.
      * 
-     * @param extensionId the extension ID
-     * @param key the API key
-     * @param value the API object
-     * @throws IllegalStateException if called outside REGISTRATION or after freeze
-     * @throws IllegalArgumentException if the key already exists for this extension
+     * @param modId mod identifier
+     * @param modApi mod's API object
+     * @throws IllegalStateException if API is frozen
      */
-    public void registerModAPI(String extensionId, String key, Object value) {
-        PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
-        
+    public void registerModApi(String modId, Object modApi) {
         if (frozen) {
-            throw new IllegalStateException("Cannot register mod API: API is frozen");
+            throw new IllegalStateException("Cannot register mod API after API is frozen");
         }
         
-        Map<String, Object> extensionMods = mods.computeIfAbsent(extensionId, k -> new HashMap<>());
-        if (extensionMods.containsKey(key)) {
-            throw new IllegalArgumentException(
-                String.format("Extension %s already has mod API key '%s'", extensionId, key)
-            );
-        }
+        mods.put(modId, modApi);
         
-        extensionMods.put(key, value);
-        LOGGER.debug("Registered mod API for extension {}: {} = {}", extensionId, key, value);
+        LOGGER.debug("Registered API for mod: {}", modId);
     }
     
     /**
-     * Freezes all domains, making them immutable.
-     * After this call, no further modifications are allowed.
+     * Freezes API surface, making it immutable.
+     * 
+     * After freezing, no further modifications can be made to domains or mods.
      */
     public void freeze() {
-        PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
-        
         if (frozen) {
             LOGGER.warn("API is already frozen");
             return;
         }
         
-        // Freeze all GuardedMap instances
-        worlds.setFrozen(true);
-        worldgen.setFrozen(true);
-        events.setFrozen(true);
-        mods.setFrozen(true);
-        core.setFrozen(true);
+        domains.freeze();
+        mods.freeze();
+        frozen = true;
+        freezeTime = Instant.now();
         
-        this.frozen = true;
-        this.phaseTransitionTime = Instant.now();
-        LOGGER.info("TapestryAPI frozen - no further modifications allowed");
+        LOGGER.info("TapestryAPI frozen at {}", freezeTime);
     }
     
     /**
-     * Gets the domain map for the given domain name.
+     * Gets the domains map (unmodifiable if frozen).
      * 
-     * @param domain the domain name
-     * @return the domain map
-     * @throws IllegalArgumentException if the domain name is invalid
+     * @return domains map
      */
-    private Map<String, Object> getDomainMap(String domain) {
-        return switch (domain) {
-            case "worlds" -> worlds;
-            case "worldgen" -> worldgen;
-            case "events" -> events;
-            case "core" -> core;
-            default -> throw new IllegalArgumentException("Unknown domain: " + domain);
-        };
+    public Map<String, Object> getDomains() {
+        return domains.unmodifiableView();
     }
     
     /**
-     * Converts a mutable map to an unmodifiable map (shallow freeze).
-     * 
-     * @param map the map to freeze
-     */
-    private void freezeDomain(Map<String, Object> map) {
-        // Create unmodifiable view and replace contents
-        Map<String, Object> frozen = Collections.unmodifiableMap(new HashMap<>(map));
-        map.clear();
-        map.putAll(frozen);
-    }
-    
-    /**
-     * Gets the worlds domain (read-only).
+     * Gets the worlds domain.
      * 
      * @return worlds domain
      */
     public Map<String, Object> getWorlds() {
-        return worlds.unmodifiableView();
+        return (Map<String, Object>) domains.get("worlds");
     }
     
     /**
-     * Gets the worldgen domain (read-only).
+     * Gets the worldgen domain.
      * 
      * @return worldgen domain
      */
     public Map<String, Object> getWorldgen() {
-        return worldgen.unmodifiableView();
+        return (Map<String, Object>) domains.get("worldgen");
     }
     
     /**
-     * Gets the events domain (read-only).
+     * Gets the events domain.
      * 
      * @return events domain
      */
     public Map<String, Object> getEvents() {
-        return events.unmodifiableView();
+        return (Map<String, Object>) domains.get("events");
     }
     
     /**
-     * Gets the mods namespace (read-only).
-     * 
-     * @return mods namespace
-     */
-    public Map<String, Map<String, Object>> getMods() {
-        return mods.unmodifiableView();
-    }
-    
-    /**
-     * Gets the core domain (read-only).
+     * Gets the core domain.
      * 
      * @return core domain
      */
     public Map<String, Object> getCore() {
-        return core.unmodifiableView();
+        return (Map<String, Object>) domains.get("core");
+    }
+    
+    /**
+     * Gets the mods map (unmodifiable if frozen).
+     * 
+     * @return mods map
+     */
+    public Map<String, Object> getMods() {
+        return mods.unmodifiableView();
     }
     
     /**
      * Checks if the API is frozen.
      * 
-     * @return true if the API is frozen
+     * @return true if frozen
      */
     public boolean isFrozen() {
         return frozen;
     }
     
     /**
-     * Gets the time of the last phase transition.
+     * Gets the time when the API was frozen.
      * 
-     * @return the timestamp of the last transition
+     * @return freeze time, or null if not frozen
      */
-    public Instant getPhaseTransitionTime() {
-        return phaseTransitionTime;
+    public Instant getFreezeTime() {
+        return freezeTime;
+    }
+    
+    /**
+     * Creates a new extension context for the given phase.
+     * 
+     * @param phase the phase to create context for
+     * @return a new extension context
+     */
+    public TapestryExtensionContext createContext(TapestryPhase phase) {
+        return new TapestryExtensionContext(this, phase);
     }
 }

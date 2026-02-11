@@ -101,12 +101,19 @@ public class GuardedMap<K, V> implements Map<K, V> {
         return delegate.get(key);
     }
     
-    @Override
     public K[] toArray() {
-        return delegate.keySet().toArray(new K[0]);
+        @SuppressWarnings("unchecked")
+        K[] array = (K[]) java.lang.reflect.Array.newInstance(
+            delegate.keySet().iterator().next().getClass(), 
+            delegate.keySet().size()
+        );
+        int i = 0;
+        for (K key : delegate.keySet()) {
+            array[i++] = key;
+        }
+        return array;
     }
     
-    @Override
     public <T> T[] toArray(T[] a) {
         return delegate.keySet().toArray(a);
     }
@@ -129,6 +136,14 @@ public class GuardedMap<K, V> implements Map<K, V> {
     @Override
     public V getOrDefault(Object key, V defaultValue) {
         return delegate.getOrDefault(key, defaultValue);
+    }
+    
+    /**
+     * Freezes the map, making it immutable.
+     * After freezing, any modification attempts will throw IllegalStateException.
+     */
+    public void freeze() {
+        frozen = true;
     }
     
     @Override

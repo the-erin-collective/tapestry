@@ -6,6 +6,8 @@ import com.tapestry.lifecycle.TapestryPhase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
 /**
  * Context provided to extensions during the REGISTRATION phase.
  * 
@@ -19,12 +21,12 @@ public class TapestryExtensionContext {
     private final String extensionId;
     private final TapestryAPI api;
     
-    public TapestryExtensionContext(String extensionId, TapestryAPI api) {
-        this.extensionId = extensionId;
+    public TapestryExtensionContext(TapestryAPI api, TapestryPhase phase) {
+        this.extensionId = "unknown";
         this.api = api;
         
         // Ensure we're in the correct phase
-        PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
+        PhaseController.getInstance().requirePhase(phase);
     }
     
     /**
@@ -49,8 +51,23 @@ public class TapestryExtensionContext {
     public void extendDomain(String domain, String key, Object value) {
         PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
         
-        LOGGER.debug("Extension {} extending domain {} with key {}", extensionId, domain, key);
-        api.extendDomain(domain, key, value);
+        if (!api.getDomains().containsKey(domain)) {
+            throw new IllegalArgumentException("Unknown domain: " + domain);
+        }
+        
+        if (api.getDomains().get(domain) instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> domainMap = (Map<String, Object>) api.getDomains().get(domain);
+            
+            if (domainMap.containsKey(key)) {
+                throw new IllegalArgumentException(
+                    String.format("Domain %s already contains key '%s'", domain, key)
+                );
+            }
+            
+            domainMap.put(key, value);
+            LOGGER.debug("Extended domain {} with key {} = {}", domain, key, value);
+        }
     }
     
     /**
@@ -66,6 +83,6 @@ public class TapestryExtensionContext {
         PhaseController.getInstance().requirePhase(TapestryPhase.REGISTRATION);
         
         LOGGER.debug("Extension {} registering mod API with key {}", extensionId, key);
-        api.registerModAPI(extensionId, key, value);
+        api.registerModApi(key, value);
     }
 }
