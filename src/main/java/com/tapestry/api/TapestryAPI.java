@@ -17,23 +17,23 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TapestryAPI {
     private static final Logger LOGGER = LoggerFactory.getLogger(TapestryAPI.class);
     
-    // Core domains - these are the main API namespaces
-    private final Map<String, Object> worlds;
-    private final Map<String, Object> worldgen;
-    private final Map<String, Object> events;
-    private Map<String, Map<String, Object>> mods;
-    private final Map<String, Object> core;
+    // Core domains - these are main API namespaces
+    private final GuardedMap<String, Object> worlds;
+    private final GuardedMap<String, Object> worldgen;
+    private final GuardedMap<String, Object> events;
+    private final GuardedMap<String, Map<String, Object>> mods;
+    private final GuardedMap<String, Object> core;
     
     // Internal state
     private volatile boolean frozen = false;
     
     public TapestryAPI() {
-        // Initialize domains as mutable maps initially
-        this.worlds = new HashMap<>();
-        this.worldgen = new HashMap<>();
-        this.events = new HashMap<>();
-        this.mods = new HashMap<>();
-        this.core = new HashMap<>();
+        // Initialize domains as GuardedMap instances
+        this.worlds = new GuardedMap<>();
+        this.worldgen = new GuardedMap<>();
+        this.events = new GuardedMap<>();
+        this.mods = new GuardedMap<>();
+        this.core = new GuardedMap<>();
         
         // Initialize core with phase information
         this.core.put("phases", Arrays.asList(TapestryPhase.values()));
@@ -99,7 +99,7 @@ public class TapestryAPI {
     }
     
     /**
-     * Freezes the API surface, making it immutable.
+     * Freezes all domains, making them immutable.
      * After this call, no further modifications are allowed.
      */
     public void freeze() {
@@ -110,23 +110,15 @@ public class TapestryAPI {
             return;
         }
         
-        // Convert all mutable maps to unmodifiable
-        freezeDomain(worlds);
-        freezeDomain(worldgen);
-        freezeDomain(events);
-        
-        // Freeze mods namespace
-        Map<String, Map<String, Object>> frozenMods = new HashMap<>();
-        for (Map.Entry<String, Map<String, Object>> entry : mods.entrySet()) {
-            freezeDomain(entry.getValue());
-            frozenMods.put(entry.getKey(), Collections.unmodifiableMap(entry.getValue()));
-        }
-        this.mods = Collections.unmodifiableMap(frozenMods);
-        
-        // Freeze core
-        freezeDomain(core);
+        // Freeze all GuardedMap instances
+        worlds.setFrozen(true);
+        worldgen.setFrozen(true);
+        events.setFrozen(true);
+        mods.setFrozen(true);
+        core.setFrozen(true);
         
         this.frozen = true;
+        this.phaseTransitionTime = Instant.now();
         LOGGER.info("TapestryAPI frozen - no further modifications allowed");
     }
     
@@ -162,46 +154,46 @@ public class TapestryAPI {
     /**
      * Gets the worlds domain (read-only).
      * 
-     * @return the worlds domain
+     * @return worlds domain
      */
     public Map<String, Object> getWorlds() {
-        return Collections.unmodifiableMap(worlds);
+        return worlds.unmodifiableView();
     }
     
     /**
      * Gets the worldgen domain (read-only).
      * 
-     * @return the worldgen domain
+     * @return worldgen domain
      */
     public Map<String, Object> getWorldgen() {
-        return Collections.unmodifiableMap(worldgen);
+        return worldgen.unmodifiableView();
     }
     
     /**
      * Gets the events domain (read-only).
      * 
-     * @return the events domain
+     * @return events domain
      */
     public Map<String, Object> getEvents() {
-        return Collections.unmodifiableMap(events);
+        return events.unmodifiableView();
     }
     
     /**
      * Gets the mods namespace (read-only).
      * 
-     * @return the mods namespace
+     * @return mods namespace
      */
     public Map<String, Map<String, Object>> getMods() {
-        return Collections.unmodifiableMap(mods);
+        return mods.unmodifiableView();
     }
     
     /**
      * Gets the core domain (read-only).
      * 
-     * @return the core domain
+     * @return core domain
      */
     public Map<String, Object> getCore() {
-        return Collections.unmodifiableMap(core);
+        return core.unmodifiableView();
     }
     
     /**
@@ -211,5 +203,14 @@ public class TapestryAPI {
      */
     public boolean isFrozen() {
         return frozen;
+    }
+    
+    /**
+     * Gets the time of the last phase transition.
+     * 
+     * @return the timestamp of the last transition
+     */
+    public Instant getPhaseTransitionTime() {
+        return phaseTransitionTime;
     }
 }

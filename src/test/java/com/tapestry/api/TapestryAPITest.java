@@ -192,6 +192,11 @@ class TapestryAPITest {
         assertThrows(UnsupportedOperationException.class, () -> {
             worlds.put("weather", Map.of("rain", true));
         });
+        
+        // But the original GuardedMap should still be frozen
+        assertThrows(IllegalStateException.class, () -> {
+            api.extendDomain("worlds", "weather", Map.of("rain", true));
+        });
     }
     
     @Test
@@ -206,10 +211,15 @@ class TapestryAPITest {
             mods.put("otherExtension", Map.of("config", Map.of("value", 42)));
         });
         
-        // Individual extension maps should also be unmodifiable
+        // The individual extension maps should also be unmodifiable
         Map<String, Object> extensionMap = mods.get("testExtension");
         assertThrows(UnsupportedOperationException.class, () -> {
             extensionMap.put("other", Map.of("value", 42));
+        });
+        
+        // But the original GuardedMap should still be frozen
+        assertThrows(IllegalStateException.class, () -> {
+            api.registerModAPI("testExtension", "other", Map.of("value", 42));
         });
     }
     
