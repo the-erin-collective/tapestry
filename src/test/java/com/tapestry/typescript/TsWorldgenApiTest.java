@@ -3,11 +3,8 @@ package com.tapestry.typescript;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
-import org.graalvm.polyglot.Value;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,18 +17,23 @@ public class TsWorldgenApiTest {
     
     private HookRegistry hookRegistry;
     private TsWorldgenApi worldgenApi;
-    private Object mockHandler;
     
     @BeforeEach
     void setUp() {
         // Reset phase controller for each test
         PhaseController.reset();
         
+        // Advance through phases to TS_READY for worldgen API tests
+        PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
+        PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
+        
         hookRegistry = new HookRegistry();
         hookRegistry.allowRegistration();
         
         worldgenApi = new TsWorldgenApi(hookRegistry);
-        mockHandler = new MockValue("testHandler");
     }
     
     @Test
@@ -56,35 +58,10 @@ public class TsWorldgenApiTest {
     }
     
     @Test
-    void testCreateApiObject() {
-        Map<String, Object> api = worldgenApi.createApiObject();
-        
-        assertNotNull(api);
-        assertTrue(api.containsKey("onResolveBlock"));
-        assertNotNull(api.get("onResolveBlock"));
-    }
-    
-    /**
-     * Mock Value implementation for testing.
-     * Since Value is a final class from GraalVM, we create a simple wrapper.
-     */
-    private static class MockValue {
-        private final String name;
-        
-        public MockValue(String name) {
-            this.name = name;
-        }
-        
-        public boolean canExecute() {
-            return true;
-        }
-        
-        public boolean isNull() {
-            return false;
-        }
-        
-        public String toString() {
-            return "MockValue:" + name;
-        }
+    void testOnResolveBlock() {
+        // Test that null handler is rejected
+        assertThrows(IllegalArgumentException.class, () -> {
+            worldgenApi.onResolveBlock(null);
+        });
     }
 }

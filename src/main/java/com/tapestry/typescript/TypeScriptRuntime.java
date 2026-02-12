@@ -155,7 +155,7 @@ public class TypeScriptRuntime {
                 throw new IllegalArgumentException("tapestry.mod.define requires exactly one argument");
             }
             
-            Value modDefinition = (Value) args[0];
+            Value modDefinition = args[0];
             defineFunction.define(modDefinition);
             return null;
         });
@@ -192,7 +192,7 @@ public class TypeScriptRuntime {
                 throw new IllegalArgumentException("tapestry.worldgen.onResolveBlock requires exactly one argument");
             }
             
-            Object handler = args[0];
+            Value handler = args[0];
             worldgenApi.onResolveBlock(handler);
             return null;
         });
@@ -232,40 +232,36 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Executes the onLoad function for a mod.
+     * Executes a onLoad function for a given mod.
      * 
-     * @param onLoad onLoad function to execute
+     * @param onLoad Value function to execute
      * @param modId mod ID for context tracking
      * @param api TapestryAPI to pass to the function (not used - we pass JS tapestry object instead)
      */
-    public void executeOnLoad(Object onLoad, String modId, TapestryAPI api) {
+    public void executeOnLoad(Value onLoad, String modId, TapestryAPI api) {
         if (!initialized) {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
         
-        if (onLoad == null) {
+        if (onLoad == null || onLoad.isNull()) {
             LOGGER.warn("Mod {} has no onLoad function to execute", modId);
             return;
+        }
+        
+        // Verify it's executable
+        if (!onLoad.canExecute()) {
+            throw new IllegalArgumentException("onLoad must be an executable function");
         }
         
         // Set current mod ID for context tracking
         currentModId.set(modId);
         
         try {
-            // Convert Object to Value for execution using the JS context
-            Value onLoadFunction = jsContext.asValue(onLoad);
-            
-            // Verify it's executable
-            if (!onLoadFunction.canExecute()) {
-                throw new IllegalArgumentException("onLoad must be an executable function");
-            }
-            
-            // Get the JS tapestry object to pass to onLoad function
-            // This is the same object exposed to JavaScript
+            // Get the JS tapestry object to pass to onLoad
             Value tapestryObject = jsContext.getBindings("js").getMember("tapestry");
             
-            // Execute onLoad function with the JS tapestry object
-            onLoadFunction.executeVoid(tapestryObject);
+            // Execute onLoad function with JS tapestry object
+            onLoad.executeVoid(tapestryObject);
             
             LOGGER.info("Successfully executed onLoad for mod: {}", modId);
         } catch (Exception e) {
