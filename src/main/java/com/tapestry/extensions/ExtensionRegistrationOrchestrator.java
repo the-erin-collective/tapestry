@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.TreeMap;
 
 /**
  * Orchestrates extension registration with deterministic ordering.
@@ -57,7 +58,7 @@ public class ExtensionRegistrationOrchestrator {
             LOGGER.debug("Registration order: {}", String.join(" -> ", registrationOrder));
             
             // 2. Register each extension in order
-            Map<String, Set<String>> registeredCapabilities = new HashMap<>();
+            Map<String, Set<String>> registeredCapabilities = new TreeMap<>();
             
             for (String extensionId : registrationOrder) {
                 var validatedExtension = enabledExtensions.get(extensionId);

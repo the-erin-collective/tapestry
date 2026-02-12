@@ -158,10 +158,6 @@ public class TapestryMod implements ModInitializer {
             throw new RuntimeException("Extension registration failed", e);
         }
         
-        // FREEZE: Lock API surface
-        LOGGER.info("=== FREEZE PHASE ===");
-        PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
-        
         // Freeze registries and get the API tree for TypeScript
         apiRegistry.freeze();
         hookRegistry.freeze();
