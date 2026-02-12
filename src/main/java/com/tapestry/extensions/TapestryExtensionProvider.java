@@ -6,4 +6,12 @@ package com.tapestry.extensions;
  */
 public interface TapestryExtensionProvider {
     TapestryExtensionDescriptor describe();
+    
+    /**
+     * Creates the actual extension instance for registration.
+     * This method is called during capability registration.
+     * 
+     * @return the extension instance
+     */
+    TapestryExtension create();
 }

@@ -9,6 +9,7 @@ import java.util.List;
  */
 public record ValidatedExtension(
     TapestryExtensionDescriptor descriptor,
+    TapestryExtensionProvider provider,
     ModContainer sourceMod,
     List<CapabilityDecl> capabilitiesResolved,
     List<String> resolvedDependencies

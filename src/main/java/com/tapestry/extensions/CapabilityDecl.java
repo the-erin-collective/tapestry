@@ -9,5 +9,6 @@ public record CapabilityDecl(
     String name,                     // e.g. "worldgen.onResolveBlock"
     CapabilityType type,             // HOOK | API | SERVICE
     boolean exclusive,               // explicit exclusivity flag
-    Map<String, Object> meta         // optional structured metadata
+    Map<String, Object> meta,        // optional structured metadata
+    String apiPath                   // required for API type: where function appears in JS
 ) {}

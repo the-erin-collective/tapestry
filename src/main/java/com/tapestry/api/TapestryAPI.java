@@ -174,12 +174,37 @@ public class TapestryAPI {
     }
     
     /**
-     * Creates a new extension context for the given phase.
+     * Creates an extension context for capability registration.
      * 
+     * @param extensionId the extension ID
      * @param phase the phase to create context for
+     * @param apiRegistry the API registry
+     * @param hookRegistry the hook registry  
+     * @param serviceRegistry the service registry
+     * @param declaredCapabilities the declared capabilities
      * @return a new extension context
      */
-    public TapestryExtensionContext createContext(TapestryPhase phase) {
-        return new TapestryExtensionContext(this, phase);
+    public TapestryExtensionContext createContext(String extensionId, 
+                                                  TapestryPhase phase,
+                                                  ApiRegistry apiRegistry,
+                                                  HookRegistry hookRegistry,
+                                                  ServiceRegistry serviceRegistry,
+                                                  Map<String, TapestryExtensionDescriptor> declaredCapabilities) {
+        // Only create context in REGISTRATION phase
+        if (phase != TapestryPhase.REGISTRATION) {
+            throw new IllegalStateException(
+                "Extension context can only be created in REGISTRATION phase, but current phase is " + phase
+            );
+        }
+        
+        // Create extension context with proper registries
+        Map<String, Set<String>> registeredCapabilities = new HashMap<>();
+        return new ExtensionRegistrationContext(
+            extensionId,
+            apiRegistry,
+            hookRegistry, 
+            serviceRegistry,
+            registeredCapabilities
+        );
     }
 }

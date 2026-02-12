@@ -86,6 +86,7 @@ public class ExtensionValidator {
                         
                         var validated = new ValidatedExtension(
                             descriptor,
+                            provider.provider(),
                             provider.sourceMod(),
                             descriptor.capabilities(),
                             resolvedDepsByExtension.get(descriptor.id())

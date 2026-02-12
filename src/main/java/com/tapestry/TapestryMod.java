@@ -131,7 +131,7 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("=== REGISTRATION PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         
-        // TODO: Register validated extensions here in Phase 4
+        // TODO: Register validated extensions here during capability registration
         // For now, we just advance to FREEZE
         
         // FREEZE: Lock API surface

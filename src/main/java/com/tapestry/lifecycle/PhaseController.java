@@ -179,6 +179,21 @@ public class PhaseController {
     }
     
     /**
+     * Completes the current phase and advances to the next one.
+     * This is a convenience method for phase completion.
+     * 
+     * @param currentPhase the phase that should be currently active
+     * @throws IllegalStateException if the current phase doesn't match
+     */
+    public void complete(TapestryPhase currentPhase) {
+        requirePhase(currentPhase);
+        
+        // Advance to the next phase
+        TapestryPhase nextPhase = TapestryPhase.values()[currentPhase.ordinal() + 1];
+        advanceTo(nextPhase);
+    }
+    
+    /**
      * Resets the phase controller to initial state for testing.
      * This should only be used in test code.
      */

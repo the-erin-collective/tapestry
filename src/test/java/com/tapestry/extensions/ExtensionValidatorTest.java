@@ -44,7 +44,7 @@ public class ExtensionValidatorTest {
             "Test Extension",
             "1.0.0",
             "0.1.0", // lower than current, should be valid
-            List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of())),
+            List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of(), null)),
             List.of(),
             List.of()
         );
@@ -75,7 +75,7 @@ public class ExtensionValidatorTest {
             "Test Extension",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of())),
+            List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of(), null)),
             List.of(),
             List.of()
         );
@@ -109,7 +109,7 @@ public class ExtensionValidatorTest {
             "Test Extension",
             "1.0.0",
             "1.0.0", // higher than current 0.3.0
-            List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of())),
+            List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of(), null)),
             List.of(),
             List.of()
         );
@@ -138,7 +138,7 @@ public class ExtensionValidatorTest {
     @Test
     void testCapabilityConflict() {
         // Create two extensions with same exclusive capability
-        var capability = new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of());
+        var capability = new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null);
         
         var descriptor1 = new TapestryExtensionDescriptor(
             "extension1",
@@ -208,7 +208,7 @@ public class ExtensionValidatorTest {
             "Extension 1",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of())),
+            List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of("extension2"), // depends on extension2
             List.of()
         );
@@ -218,7 +218,7 @@ public class ExtensionValidatorTest {
             "Extension 2",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of())),
+            List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of("extension1"), // depends on extension1
             List.of()
         );
@@ -271,7 +271,7 @@ public class ExtensionValidatorTest {
             "Extension 1",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of())),
+            List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of(),
             List.of()
         );
@@ -281,7 +281,7 @@ public class ExtensionValidatorTest {
             "Extension 2",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of())),
+            List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of(),
             List.of()
         );
@@ -335,7 +335,7 @@ public class ExtensionValidatorTest {
             "Extension 1",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of())),
+            List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of("nonexistent"), // requires non-existent dependency
             List.of()
         );
@@ -346,7 +346,7 @@ public class ExtensionValidatorTest {
             "Extension 2",
             "1.0.0",
             "0.1.0",
-            List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of())),
+            List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of(),
             List.of()
         );

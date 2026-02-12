@@ -1,32 +1,35 @@
 package com.tapestry.extensions;
 
-import com.tapestry.api.TapestryAPI;
-import com.tapestry.lifecycle.TapestryPhase;
+import org.slf4j.Logger;
 
 /**
- * Context for Tapestry extensions providing access to API and phase information.
+ * Context provided to extensions during capability registration.
+ * Provides access to registries and logging.
  */
-public class TapestryExtensionContext {
-    
-    private final TapestryAPI api;
-    private final TapestryPhase phase;
-    
-    public TapestryExtensionContext(TapestryAPI api, TapestryPhase phase) {
-        this.api = api;
-        this.phase = phase;
-    }
+public interface TapestryExtensionContext {
     
     /**
-     * @return the Tapestry API instance
+     * @return the ID of the extension being registered
      */
-    public TapestryAPI api() {
-        return api;
-    }
+    String extensionId();
     
     /**
-     * @return the current phase
+     * @return the API registry for registering functions
      */
-    public TapestryPhase phase() {
-        return phase;
-    }
+    ApiRegistry api();
+    
+    /**
+     * @return the hook registry for registering hook bridges
+     */
+    HookRegistry hooks();
+    
+    /**
+     * @return the service registry for registering Java services
+     */
+    ServiceRegistry services();
+    
+    /**
+     * @return logger for this extension
+     */
+    Logger log();
 }
