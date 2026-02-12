@@ -181,6 +181,9 @@ public class SchedulerService {
         context.put("modId", task.modId());
         context.put("tick", currentTick);
         context.put("handle", task.handle());
+        // Add worldId if available (for Phase 7+ compatibility)
+        // For now, we'll set it to null but the structure is ready
+        context.put("worldId", null);
         
         // Execute the callback
         task.callback().executeVoid(context);

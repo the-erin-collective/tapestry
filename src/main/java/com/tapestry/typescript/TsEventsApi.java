@@ -56,7 +56,17 @@ public class TsEventsApi {
                 throw new IllegalArgumentException("Second argument must be an executable function");
             }
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register '%s' from mod '%s' in mode '%s'", 
+                        eventName, context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             if (modId == null) {
                 throw new IllegalStateException("No mod ID set in current context");
             }
@@ -82,7 +92,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'playerJoin' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("playerJoin", callback, modId, source);
@@ -97,7 +117,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'playerQuit' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("playerQuit", callback, modId, source);
@@ -112,7 +142,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'playerChat' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("playerChat", callback, modId, source);
@@ -131,7 +171,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'blockBreak' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("blockBreak", callback, modId, source);
@@ -146,7 +196,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'blockPlace' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("blockPlace", callback, modId, source);
@@ -165,7 +225,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'serverStarted' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("serverStarted", callback, modId, source);
@@ -180,7 +250,17 @@ public class TsEventsApi {
             Value callback = args[0];
             validateEventCallback(callback);
             
-            String modId = TypeScriptRuntime.getCurrentModId();
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'serverStopping' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
             String source = getModSource(modId);
             
             eventBus.on("serverStopping", callback, modId, source);

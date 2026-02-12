@@ -41,23 +41,23 @@ public class TsRuntimeApi {
                 throw new IllegalArgumentException("Message must be a string");
             }
             
-            String modId = TypeScriptRuntime.getCurrentModId();
-            String source = TypeScriptRuntime.getCurrentSource();
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            String modId = context.modId();
+            String source = context.source();
             
             // Extract context if provided
-            Map<String, Object> context = new HashMap<>();
+            Map<String, Object> logContext = new HashMap<>();
             if (args.length > 1 && args[1] != null) {
-                // For now, we'll just log the context as a string
-                // In a full implementation, we'd properly serialize the context object
-                context.put("data", args[1].toString());
+                // For now, we'll just stringify the context object
+                logContext.put("data", args[1].toString());
             }
             
-            context.put("modId", modId);
+            logContext.put("modId", modId);
             if (source != null) {
-                context.put("source", source);
+                logContext.put("source", source);
             }
             
-            LOGGER.info("[TS RUNTIME] [{}] {} - {}", modId, message, context);
+            LOGGER.info("[TS RUNTIME] [{}] {} - {}", modId, message, logContext);
             return null;
         });
         
@@ -71,20 +71,23 @@ public class TsRuntimeApi {
                 throw new IllegalArgumentException("Message must be a string");
             }
             
-            String modId = TypeScriptRuntime.getCurrentModId();
-            String source = TypeScriptRuntime.getCurrentSource();
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            String modId = context.modId();
+            String source = context.source();
             
-            Map<String, Object> context = new HashMap<>();
+            // Extract context if provided
+            Map<String, Object> logContext = new HashMap<>();
             if (args.length > 1 && args[1] != null) {
-                context.put("data", args[1].toString());
+                // For now, we'll just stringify the context object
+                logContext.put("data", args[1].toString());
             }
             
-            context.put("modId", modId);
+            logContext.put("modId", modId);
             if (source != null) {
-                context.put("source", source);
+                logContext.put("source", source);
             }
             
-            LOGGER.warn("[TS RUNTIME] [{}] {} - {}", modId, message, context);
+            LOGGER.warn("[TS RUNTIME] [{}] {} - {}", modId, message, logContext);
             return null;
         });
         
@@ -98,20 +101,23 @@ public class TsRuntimeApi {
                 throw new IllegalArgumentException("Message must be a string");
             }
             
-            String modId = TypeScriptRuntime.getCurrentModId();
-            String source = TypeScriptRuntime.getCurrentSource();
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            String modId = context.modId();
+            String source = context.source();
             
-            Map<String, Object> context = new HashMap<>();
+            // Extract context if provided
+            Map<String, Object> logContext = new HashMap<>();
             if (args.length > 1 && args[1] != null) {
-                context.put("data", args[1].toString());
+                // For now, we'll just stringify the context object
+                logContext.put("data", args[1].toString());
             }
             
-            context.put("modId", modId);
+            logContext.put("modId", modId);
             if (source != null) {
-                context.put("source", source);
+                logContext.put("source", source);
             }
             
-            LOGGER.error("[TS RUNTIME] [{}] {} - {}", modId, message, context);
+            LOGGER.error("[TS RUNTIME] [{}] {} - {}", modId, message, logContext);
             return null;
         });
         

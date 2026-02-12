@@ -35,9 +35,70 @@ public class TypeScriptRuntime {
     private static Context jsContext;
     private static boolean initialized = false;
     
-    // ThreadLocal context for tracking current script and mod
-    private static final ThreadLocal<String> currentSource = new ThreadLocal<>();
-    private static final ThreadLocal<String> currentModId = new ThreadLocal<>();
+    /**
+     * Thread-safe execution context tracking for TypeScript runtime.
+     */
+    public enum ExecutionContextMode {
+        NONE,
+        ON_LOAD,
+        RUNTIME
+    }
+
+    /**
+     * Thread-local execution context for tracking current mod and execution mode.
+     */
+    private static final ThreadLocal<ExecutionContext> currentContext = ThreadLocal.withInitial(() -> 
+        new ExecutionContext(null, ExecutionContextMode.NONE)
+    );
+
+    /**
+     * Represents the current execution context.
+     */
+    private static class ExecutionContext {
+        private String modId;
+        private ExecutionContextMode mode;
+        private String source;
+        
+        ExecutionContext(String modId, ExecutionContextMode mode) {
+            this.modId = modId;
+            this.mode = mode;
+        }
+        
+        String modId() { return modId; }
+        ExecutionContextMode mode() { return mode; }
+        String source() { return source; }
+        
+        void setModId(String modId) { this.modId = modId; }
+        void setMode(ExecutionContextMode mode) { this.mode = mode; }
+        void setSource(String source) { this.source = source; }
+    }
+
+    /**
+     * Sets the current execution context.
+     */
+    public static void setExecutionContext(String modId, ExecutionContextMode mode, String source) {
+        ExecutionContext context = currentContext.get();
+        context.setModId(modId);
+        context.setMode(mode);
+        context.setSource(source);
+    }
+
+    /**
+     * Gets the current execution context.
+     */
+    public static ExecutionContext getCurrentContext() {
+        return currentContext.get();
+    }
+
+    /**
+     * Clears the execution context.
+     */
+    public static void clearExecutionContext() {
+        ExecutionContext context = currentContext.get();
+        context.setModId(null);
+        context.setMode(ExecutionContextMode.NONE);
+        context.setSource(null);
+    }
     
     // Track sources that have already defined a mod (one-define-per-file rule)
     private static final Set<String> sourcesWithModDefine = new HashSet<>();
@@ -266,7 +327,7 @@ public class TypeScriptRuntime {
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
         
         // Set current source for context tracking
-        currentSource.set(sourceName);
+        setExecutionContext(null, ExecutionContextMode.NONE, sourceName);
         
         try {
             Source src = Source.newBuilder("js", source, sourceName).build();
@@ -277,7 +338,7 @@ public class TypeScriptRuntime {
             throw new RuntimeException("Script evaluation failed: " + sourceName, e);
         } finally {
             // Clear current source
-            currentSource.remove();
+            clearExecutionContext();
         }
     }
     
@@ -306,7 +367,7 @@ public class TypeScriptRuntime {
         }
         
         // Set current mod ID and source for context tracking
-        currentModId.set(modId);
+        setExecutionContext(modId, ExecutionContextMode.ON_LOAD, source);
         
         // Try to get source information from the mod registry
         String source = "unknown";
@@ -326,7 +387,7 @@ public class TypeScriptRuntime {
             throw new RuntimeException("Failed to execute onLoad for mod: " + modId, e);
         } finally {
             // Clear current mod ID
-            currentModId.remove();
+            clearExecutionContext();
         }
     }
     
@@ -384,65 +445,6 @@ public class TypeScriptRuntime {
     
     /**
      * Evaluates a JavaScript expression in the runtime context.
-     * For Phase 1, this should only be used for internal validation.
-     * Requires TS_READY phase or later.
-     * 
-     * @param script JavaScript script to evaluate
-     * @return result of evaluation
-     * @throws IllegalStateException if the runtime is not initialized or wrong phase
-     */
-    public Value evaluate(String script) {
-        if (!initialized) {
-            throw new IllegalStateException("TypeScript runtime not initialized");
-        }
-        
-        PhaseController.getInstance().requireAtLeast(TapestryPhase.TS_READY);
-        
-        return jsContext.eval("js", script);
-    }
-    
-    /**
-     * Gets the current source being evaluated.
-     * 
-     * @return current source name, or null if not evaluating
-     */
-    public static String getCurrentSource() {
-        return currentSource.get();
-    }
-    
-    /**
-     * Sets the current source being evaluated.
-     * 
-     * @param source the source name
-     */
-    public static void setCurrentSource(String source) {
-        currentSource.set(source);
-    }
-    
-    /**
-     * Gets the current mod ID being executed.
-     * 
-     * @return current mod ID, or null if not executing
-     */
-    public static String getCurrentModId() {
-        return currentModId.get();
-    }
-    
-    /**
-     * Sets the current mod ID being executed.
-     * 
-     * @param modId the mod ID
-     */
-    public static void setCurrentModId(String modId) {
-        currentModId.set(modId);
-    }
-    
-    /**
-     * Checks if a mod has already been defined in the given source.
-     * 
-     * @param source the source to check
-     * @return true if a mod was already defined in this source
-     */
     public static boolean hasModDefinedInSource(String source) {
         synchronized (sourcesWithModDefine) {
             return sourcesWithModDefine.contains(source);

@@ -4,7 +4,6 @@ import org.graalvm.polyglot.proxy.ProxyObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -21,9 +20,9 @@ public class RuntimeContextFactory {
     /**
      * Creates a scheduler callback context.
      * 
-     * @param modId the mod ID
-     * @param tick the current tick
-     * @param handle the task handle
+     * @param modId mod ID
+     * @param tick current tick
+     * @param handle task handle
      * @return immutable context object
      */
     public static ProxyObject createSchedulerContext(String modId, long tick, String handle) {
@@ -39,8 +38,8 @@ public class RuntimeContextFactory {
      * Creates a player join event context.
      * 
      * @param modId the mod ID
-     * @param playerUuid the player UUID
-     * @param playerName the player name
+     * @param playerUuid player UUID
+     * @param playerName player name
      * @param worldId the world ID
      * @param tick the current tick
      * @return immutable context object
@@ -65,8 +64,8 @@ public class RuntimeContextFactory {
      * Creates a player quit event context.
      * 
      * @param modId the mod ID
-     * @param playerUuid the player UUID
-     * @param playerName the player name
+     * @param playerUuid player UUID
+     * @param playerName player name
      * @param worldId the world ID
      * @param tick the current tick
      * @return immutable context object
@@ -91,9 +90,9 @@ public class RuntimeContextFactory {
      * Creates a player chat event context.
      * 
      * @param modId the mod ID
-     * @param playerUuid the player UUID
-     * @param playerName the player name
-     * @param message the chat message
+     * @param playerUuid player UUID
+     * @param playerName player name
+     * @param message chat message
      * @param worldId the world ID
      * @param tick the current tick
      * @return immutable context object
@@ -120,8 +119,8 @@ public class RuntimeContextFactory {
      * Creates a block break event context.
      * 
      * @param modId the mod ID
-     * @param playerUuid the player UUID
-     * @param playerName the player name
+     * @param playerUuid player UUID
+     * @param playerName player name
      * @param worldId the world ID
      * @param position the block position
      * @param blockId the block ID
