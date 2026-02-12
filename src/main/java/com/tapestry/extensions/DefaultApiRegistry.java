@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -65,6 +66,15 @@ public class DefaultApiRegistry implements ApiRegistry {
         // Get API path from declared capability
         String apiPath = getApiPathForCapability(capabilityName);
         
+        // Enforce namespace: apiPath must start with "tapestry.mods.<extensionId>."
+        String expectedPrefix = "tapestry.mods." + extensionId + ".";
+        if (!apiPath.startsWith(expectedPrefix)) {
+            throw new InvalidApiPathException(
+                "API path '" + apiPath + "' must start with '" + expectedPrefix + "'",
+                extensionId
+            );
+        }
+        
         // Check for duplicate API path
         if (apiPathToCapability.containsKey(apiPath)) {
             String existingCapability = apiPathToCapability.get(apiPath);
@@ -116,13 +126,18 @@ public class DefaultApiRegistry implements ApiRegistry {
     }
     
     /**
-     * Builds the ProxyObject tree from registered API functions.
+     * Builds ProxyObject tree from registered API functions.
      * Creates nested objects based on API path structure.
+     * Uses TreeMap for deterministic ordering.
      */
     private ProxyObject buildApiTree() {
-        Map<String, Object> root = new HashMap<>();
+        Map<String, Object> root = new TreeMap<>();
         
-        for (var entry : capabilityToApiPath.entrySet()) {
+        // Sort API paths for deterministic tree building
+        var sortedApiPaths = new TreeMap<String, String>();
+        sortedApiPaths.putAll(capabilityToApiPath);
+        
+        for (var entry : sortedApiPaths.entrySet()) {
             String capabilityName = entry.getKey();
             String apiPath = entry.getValue();
             org.graalvm.polyglot.proxy.ProxyExecutable function = registeredFunctions.get(capabilityName);
@@ -135,7 +150,7 @@ public class DefaultApiRegistry implements ApiRegistry {
                 Map<String, Object> current = root;
                 for (int i = 1; i < pathParts.length - 1; i++) {
                     String part = pathParts[i];
-                    current = (Map<String, Object>) current.computeIfAbsent(part, k -> new HashMap<>());
+                    current = (Map<String, Object>) current.computeIfAbsent(part, k -> new TreeMap<>());
                 }
                 
                 // Add the function at the final path
@@ -150,10 +165,11 @@ public class DefaultApiRegistry implements ApiRegistry {
     
     /**
      * Recursively converts Map structure to ProxyObject structure.
+     * Uses TreeMap for deterministic ordering.
      */
     private ProxyObject convertToProxyObject(Map<String, Object> map) {
-        // Convert all nested maps first
-        Map<String, Object> converted = new HashMap<>();
+        // Convert all nested maps first, using TreeMap for deterministic ordering
+        Map<String, Object> converted = new TreeMap<>();
         for (var entry : map.entrySet()) {
             Object value = entry.getValue();
             if (value instanceof Map) {

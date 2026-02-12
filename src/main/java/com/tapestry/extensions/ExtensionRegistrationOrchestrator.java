@@ -67,9 +67,6 @@ public class ExtensionRegistrationOrchestrator {
             // 3. Enforce registration model (registered ⊆ declared)
             enforceRegistrationModel(enabledExtensions, registeredCapabilities);
             
-            // 4. Freeze all registries
-            freezeRegistries();
-            
             // 5. Complete phase
             phaseController.complete(TapestryPhase.REGISTRATION);
             
@@ -212,15 +209,5 @@ public class ExtensionRegistrationOrchestrator {
                 );
             }
         }
-    }
-    
-    /**
-     * Freezes all registries to prevent further mutations.
-     */
-    private void freezeRegistries() {
-        LOGGER.debug("Freezing registries");
-        apiRegistry.freeze();
-        hookRegistry.freeze();
-        serviceRegistry.freeze();
     }
 }
