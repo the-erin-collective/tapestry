@@ -196,6 +196,15 @@ public class TapestryMod implements ModInitializer {
         // Complete discovery phase
         modRegistry.completeDiscovery();
         
+        // Verify all scripts called tapestry.mod.define (fail-fast enforcement)
+        for (DiscoveredMod mod : discoveredMods) {
+            if (!TypeScriptRuntime.hasModDefinedInSource(mod.sourceName())) {
+                throw new RuntimeException(
+                    String.format("Script '%s' never called tapestry.mod.define - startup aborted", mod.sourceName())
+                );
+            }
+        }
+        
         // TS_READY: Execute onLoad functions and allow hook registration
         LOGGER.info("=== TS_READY PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);

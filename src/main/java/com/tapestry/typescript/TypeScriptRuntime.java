@@ -210,16 +210,19 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Evaluates a JavaScript script from the given source.
+     * Evaluates a JavaScript script from given source.
      * 
      * @param source JavaScript source code
-     * @param sourceName name of the source (for error reporting)
+     * @param sourceName name of source (for error reporting)
      * @throws RuntimeException if evaluation fails
      */
     public void evaluateScript(String source, String sourceName) {
         if (!initialized) {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
+        
+        // Phase enforcement: only allowed during TS_LOAD
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
         
         // Set current source for context tracking
         currentSource.set(sourceName);
@@ -247,6 +250,9 @@ public class TypeScriptRuntime {
         if (!initialized) {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
+        
+        // Phase enforcement: only allowed during TS_READY
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_READY);
         
         if (onLoad == null || onLoad.isNull()) {
             LOGGER.warn("Mod {} has no onLoad function to execute", modId);
