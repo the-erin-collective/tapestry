@@ -1,10 +1,14 @@
 package com.tapestry;
 
 import com.tapestry.api.TapestryAPI;
+import com.tapestry.config.ConfigService;
+import com.tapestry.events.EventBus;
 import com.tapestry.extensions.*;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.scheduler.SchedulerService;
+import com.tapestry.state.ModStateService;
 import com.tapestry.typescript.DiscoveredMod;
 import com.tapestry.typescript.TsModDiscovery;
 import com.tapestry.typescript.TsModRegistry;
@@ -210,7 +214,7 @@ public class TapestryMod implements ModInitializer {
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
         
         // Extend the tapestry object with hook APIs for TS_READY phase
-        tsRuntime.extendForReadyPhase(tsHookRegistry);
+        tsRuntime.extendForReadyPhase(tsHookRegistry, modRegistry);
         
         // Allow hook registration
         tsHookRegistry.allowRegistration();
@@ -230,10 +234,57 @@ public class TapestryMod implements ModInitializer {
         // Complete loading phase
         modRegistry.completeLoading();
         
-        // Disallow further hook registration
+        // Disallow further hook registration and freeze the registry
         tsHookRegistry.disallowRegistration();
+        tsHookRegistry.freeze();
         
         LOGGER.info("TypeScript mod loading complete");
+        
+        // RUNTIME: Initialize Phase 6 services and begin gameplay
+        initializeRuntimeServices();
+    }
+    
+    /**
+     * Initializes Phase 6 runtime services and advances to RUNTIME phase.
+     */
+    private void initializeRuntimeServices() {
+        LOGGER.info("=== RUNTIME PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
+        
+        try {
+            // Initialize Phase 6 services
+            SchedulerService schedulerService = new SchedulerService();
+            EventBus eventBus = new EventBus();
+            ConfigService configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
+            ModStateService stateService = new ModStateService();
+            
+            // Load configurations for all mods
+            for (var mod : modRegistry.getMods()) {
+                // TODO: Load config schema from mod definition
+                // For now, we'll skip config loading until schema is defined
+                LOGGER.debug("Skipping config loading for mod {} (no schema yet)", mod.id());
+            }
+            
+            // Disallow further event registration
+            eventBus.disallowRegistration();
+            
+            // Extend TypeScript runtime with Phase 6 APIs
+            tsRuntime.extendForRuntime(schedulerService, eventBus, configService, stateService, modRegistry);
+            
+            // Store services for runtime use (you might want to store these as fields)
+            // For now, we'll just log that they're initialized
+            LOGGER.info("Runtime services initialized:");
+            LOGGER.info("- SchedulerService: {} pending tasks", schedulerService.getPendingTaskCount());
+            LOGGER.info("- EventBus: {} event types", eventBus.getEventNames().size());
+            LOGGER.info("- ConfigService: ready");
+            LOGGER.info("- ModStateService: ready");
+            
+            LOGGER.info("Phase 6 runtime initialization complete - server is live!");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to initialize runtime services", e);
+            throw new RuntimeException("Runtime initialization failed", e);
+        }
     }
     
     /**

@@ -19,16 +19,18 @@ public class TsWorldgenApi {
     private static final String ON_RESOLVE_BLOCK_HOOK = "worldgen.onResolveBlock";
     
     private final HookRegistry hookRegistry;
+    private final TsModRegistry modRegistry;
     
-    public TsWorldgenApi(HookRegistry hookRegistry) {
+    public TsWorldgenApi(HookRegistry hookRegistry, TsModRegistry modRegistry) {
         this.hookRegistry = hookRegistry;
+        this.modRegistry = modRegistry;
     }
     
     /**
      * Registers a hook for worldgen.onResolveBlock.
      * 
      * @param handler JavaScript Value function to call
-     * @throws IllegalStateException if not in TS_READY phase
+     * @throws IllegalStateException if not in TS_READY phase or not during onLoad execution
      * @throws IllegalArgumentException if handler is null or not executable
      */
     public void onResolveBlock(Value handler) {
@@ -47,11 +49,32 @@ public class TsWorldgenApi {
         // Get the current mod ID from execution context
         String modId = TypeScriptRuntime.getCurrentModId();
         if (modId == null) {
-            throw new IllegalStateException("No mod ID set in current context");
+            throw new IllegalStateException(
+                "Hooks may only be registered during onLoad() execution - no mod ID context found"
+            );
+        }
+        
+        // Get the source file from the mod registry for better error reporting
+        String source = "unknown";
+        if (modRegistry != null) {
+            var mod = modRegistry.getMod(modId);
+            if (mod != null) {
+                source = mod.source();
+            }
+        }
+        
+        // Additional guard: ensure we're actually inside onLoad execution
+        // This prevents async or delayed registration
+        String currentSource = TypeScriptRuntime.getCurrentSource();
+        if (currentSource != null) {
+            throw new IllegalStateException(
+                String.format("Hooks may only be registered during onLoad() execution, not during script evaluation. " +
+                    "Current source: %s, Mod: %s", currentSource, modId)
+            );
         }
         
         // Register hook with the proper signature
-        hookRegistry.registerHook("worldgen.onResolveBlock", handler, modId);
+        hookRegistry.registerHook("worldgen.onResolveBlock", handler, modId, source);
         
         LOGGER.info("Registered worldgen.onResolveBlock hook from mod '{}'", modId);
     }

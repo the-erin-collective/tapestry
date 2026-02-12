@@ -24,6 +24,11 @@ public interface Hook<TContext, TResult> {
     String modId();
     
     /**
+     * The source file where this hook was registered.
+     */
+    String source();
+    
+    /**
      * The registration order (for deterministic invocation).
      */
     int registrationOrder();
@@ -33,14 +38,16 @@ public interface Hook<TContext, TResult> {
      * 
      * @param callback the JavaScript function to call
      * @param modId the mod ID that registered this hook
+     * @param source the source file where the hook was registered
      * @param registrationOrder the order of registration
      */
     static <TContext, TResult> Hook<TContext, TResult> of(
             Value callback, 
             String modId, 
+            String source,
             int registrationOrder
     ) {
-        return new HookImpl<>(callback, modId, registrationOrder);
+        return new HookImpl<>(callback, modId, source, registrationOrder);
     }
     
     /**
@@ -49,11 +56,13 @@ public interface Hook<TContext, TResult> {
     class HookImpl<TContext, TResult> implements Hook<TContext, TResult> {
         private final Value callback;
         private final String modId;
+        private final String source;
         private final int registrationOrder;
         
-        HookImpl(Value callback, String modId, int registrationOrder) {
+        HookImpl(Value callback, String modId, String source, int registrationOrder) {
             this.callback = callback;
             this.modId = modId;
+            this.source = source;
             this.registrationOrder = registrationOrder;
         }
         
@@ -65,6 +74,11 @@ public interface Hook<TContext, TResult> {
         @Override
         public String modId() {
             return modId;
+        }
+        
+        @Override
+        public String source() {
+            return source;
         }
         
         @Override

@@ -1,8 +1,12 @@
 package com.tapestry.typescript;
 
+import com.tapestry.config.ConfigService;
+import com.tapestry.events.EventBus;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.scheduler.SchedulerService;
+import com.tapestry.state.ModStateService;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;
@@ -97,8 +101,9 @@ public class TypeScriptRuntime {
      * This should be called when transitioning to TS_READY phase.
      * 
      * @param hookRegistry the hook registry for hook registration
+     * @param modRegistry the mod registry for source information
      */
-    public void extendForReadyPhase(HookRegistry hookRegistry) {
+    public void extendForReadyPhase(HookRegistry hookRegistry, TsModRegistry modRegistry) {
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_READY);
         
         if (!initialized) {
@@ -107,7 +112,7 @@ public class TypeScriptRuntime {
         
         try {
             // Extend the tapestry object with hook APIs
-            extendTapestryObjectForReady(hookRegistry);
+            extendTapestryObjectForReady(hookRegistry, modRegistry);
             
             // Run TS_READY phase sanity check
             runSanityCheckForPhase(TapestryPhase.TS_READY);
@@ -180,33 +185,69 @@ public class TypeScriptRuntime {
         return bindings;
     }
     /**
-     * Extends the tapestry object for TS_READY phase using proper GraalVM proxies.
+     * Extends the tapestry object for RUNTIME phase with Phase 6 APIs.
+     * This should be called when transitioning to RUNTIME phase.
      * 
-     * @param hookRegistry the hook registry for hook registration
+     * @param schedulerService the scheduler service
+     * @param eventBus the event bus
+     * @param configService the config service
+     * @param stateService the state service
+     * @param modRegistry the mod registry for source information
      */
-    private void extendTapestryObjectForReady(HookRegistry hookRegistry) {
-        // Create worldgen API instance
-        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
+    public void extendForRuntime(SchedulerService schedulerService, EventBus eventBus, 
+                                 ConfigService configService, ModStateService stateService, 
+                                 TsModRegistry modRegistry) {
+        PhaseController.getInstance().requirePhase(TapestryPhase.RUNTIME);
         
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            // Extend the tapestry object with Phase 6 APIs
+            extendTapestryObjectForRuntime(schedulerService, eventBus, configService, stateService, modRegistry);
+            
+            // Run RUNTIME phase sanity check
+            runSanityCheckForPhase(TapestryPhase.RUNTIME);
+            
+            LOGGER.info("TypeScript runtime extended for RUNTIME phase");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for RUNTIME", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for RUNTIME", e);
+        }
+    }
+    
+    /**
+     * Extends the tapestry object for RUNTIME phase using proper GraalVM proxies.
+     * 
+     * @param schedulerService the scheduler service
+     * @param eventBus the event bus
+     * @param configService the config service
+     * @param stateService the state service
+     * @param modRegistry the mod registry for source information
+     */
+    private void extendTapestryObjectForRuntime(SchedulerService schedulerService, EventBus eventBus, 
+                                                 ConfigService configService, ModStateService stateService,
+                                                 TsModRegistry modRegistry) {
         // Get the existing tapestry object
         Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
         
-        // Create worldgen namespace with ProxyExecutable functions
-        Map<String, Object> worldgen = new HashMap<>();
-        worldgen.put("onResolveBlock", (ProxyExecutable) args -> {
-            if (args.length != 1) {
-                throw new IllegalArgumentException("tapestry.worldgen.onResolveBlock requires exactly one argument");
-            }
-            
-            Value handler = args[0];
-            worldgenApi.onResolveBlock(handler);
-            return null;
-        });
+        // Create Phase 6 API instances
+        TsSchedulerApi schedulerApi = new TsSchedulerApi(schedulerService);
+        TsEventsApi eventsApi = new TsEventsApi(eventBus, modRegistry);
+        TsConfigApi configApi = new TsConfigApi(configService);
+        TsStateApi stateApi = new TsStateApi(stateService);
+        TsRuntimeApi runtimeApi = new TsRuntimeApi();
         
-        // Extend the existing tapestry object with minimal Phase 2 domains
-        tapestryValue.putMember("worldgen", ProxyObject.fromMap(worldgen));
+        // Add Phase 6 namespaces
+        tapestryValue.putMember("scheduler", schedulerApi.createNamespace());
+        tapestryValue.putMember("events", eventsApi.createNamespace());
+        tapestryValue.putMember("config", configApi.createNamespace());
+        tapestryValue.putMember("state", stateApi.createNamespace());
+        tapestryValue.putMember("runtime", runtimeApi.createNamespace());
         
-        LOGGER.debug("Extended tapestry object for TS_READY phase");
+        LOGGER.debug("Extended tapestry object for RUNTIME phase with Phase 6 APIs");
     }
     
     /**
@@ -264,8 +305,13 @@ public class TypeScriptRuntime {
             throw new IllegalArgumentException("onLoad must be an executable function");
         }
         
-        // Set current mod ID for context tracking
+        // Set current mod ID and source for context tracking
         currentModId.set(modId);
+        
+        // Try to get source information from the mod registry
+        String source = "unknown";
+        // Note: This would require access to the mod registry, which we don't have here
+        // For now, we'll rely on the hook API to get source info from other means
         
         try {
             // Get the JS tapestry object to pass to onLoad

@@ -43,18 +43,28 @@ public class HookRegistry {
     }
     
     /**
+     * Explicitly freezes the hook registry to prevent any further changes.
+     * This is called after TS_READY phase to ensure runtime stability.
+     */
+    public void freeze() {
+        registrationAllowed = false;
+        LOGGER.info("Hook registry frozen - no further modifications allowed");
+    }
+    
+    /**
      * Registers a hook for the given hook type.
      * 
      * @param hookType the type of hook (e.g., "worldgen.onResolveBlock")
      * @param callback the JavaScript function to call
      * @param modId the mod ID registering the hook
+     * @param source the source file where the hook is being registered
      * @throws IllegalStateException if registration is not allowed
      */
-    public void registerHook(String hookType, Value callback, String modId) {
+    public void registerHook(String hookType, Value callback, String modId, String source) {
         if (!registrationAllowed) {
             throw new IllegalStateException(
-                String.format("Hook registration not allowed in current phase. Tried to register '%s' from mod '%s'", 
-                    hookType, modId)
+                String.format("Hook registration not allowed in current phase. Tried to register '%s' from mod '%s' in source '%s'", 
+                    hookType, modId, source)
             );
         }
         
@@ -62,12 +72,12 @@ public class HookRegistry {
             throw new IllegalArgumentException("Hook callback must be an executable function");
         }
         
-        Hook<?, ?> hook = Hook.of(callback, modId, nextRegistrationOrder++);
+        Hook<?, ?> hook = Hook.of(callback, modId, source, nextRegistrationOrder++);
         
         hooks.computeIfAbsent(hookType, k -> new ArrayList<>()).add(hook);
         
-        LOGGER.info("Registered hook '{}' from mod '{}' (order: {})", 
-            hookType, modId, hook.registrationOrder());
+        LOGGER.info("Registered hook '{}' from mod '{}' (source: {}, order: {})", 
+            hookType, modId, source, hook.registrationOrder());
     }
     
     /**
@@ -100,14 +110,17 @@ public class HookRegistry {
                 Object result = hook.callback().execute(context, vanillaBlock);
                 
                 if (result != null) {
-                    LOGGER.debug("Hook '{}' from mod '{}' returned non-null result", hookType, hook.modId());
+                    LOGGER.debug("Hook '{}' from mod '{}' (source: {}) returned non-null result", 
+                        hookType, hook.modId(), hook.source());
                     return (TResult) result;
                 }
                 
             } catch (Exception e) {
-                LOGGER.error("Hook '{}' from mod '{}' threw an exception", hookType, hook.modId(), e);
+                LOGGER.error("Hook '{}' from mod '{}' (source: {}) threw an exception", 
+                    hookType, hook.modId(), hook.source(), e);
                 throw new RuntimeException(
-                    String.format("Hook '%s' from mod '%s' failed", hookType, hook.modId()), e
+                    String.format("Hook '%s' from mod '%s' (source: %s) failed", 
+                        hookType, hook.modId(), hook.source()), e
                 );
             }
         }

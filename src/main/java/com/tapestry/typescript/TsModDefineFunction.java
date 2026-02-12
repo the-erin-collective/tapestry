@@ -56,7 +56,10 @@ public class TsModDefineFunction {
         
         // Enforce one-define-per-file rule
         if (TypeScriptRuntime.hasModDefinedInSource(currentSource)) {
-            throw new IllegalStateException("Multiple tapestry.mod.define calls in source: " + currentSource);
+            throw new IllegalStateException(
+                String.format("Multiple tapestry.mod.define calls in source: %s - exactly one define per file is required", 
+                    currentSource)
+            );
         }
         
         // Extract required properties from the Value
