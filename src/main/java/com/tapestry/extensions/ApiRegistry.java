@@ -1,5 +1,7 @@
 package com.tapestry.extensions;
 
+import org.graalvm.polyglot.proxy.ProxyExecutable;
+
 /**
  * Registry for API functions during capability registration.
  * Provides strict validation and deterministic behavior.
@@ -7,9 +9,9 @@ package com.tapestry.extensions;
 public interface ApiRegistry {
     
     /**
-     * Registers a function for the given capability.
+     * Registers a function for given capability.
      * 
-     * @param extensionId the ID of the extension registering the capability
+     * @param extensionId ID of the extension registering the capability
      * @param capabilityName the capability name being registered
      * @param fn the function implementation
      * @throws RegistryFrozenException if registry is frozen

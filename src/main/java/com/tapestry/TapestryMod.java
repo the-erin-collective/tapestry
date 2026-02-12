@@ -28,7 +28,8 @@ public class TapestryMod implements ModInitializer {
     
     private static TapestryAPI api;
     private static TsModRegistry modRegistry;
-    private static HookRegistry hookRegistry;
+    private static com.tapestry.extensions.HookRegistry extensionsHookRegistry; // Phase 4 registry
+    private static com.tapestry.hooks.HookRegistry tsHookRegistry; // TS handler registry
     private static TypeScriptRuntime tsRuntime;
     private static TsModDiscovery modDiscovery;
     
@@ -67,7 +68,8 @@ public class TapestryMod implements ModInitializer {
         // Initialize core components
         api = new TapestryAPI();
         modRegistry = new TsModRegistry();
-        hookRegistry = new HookRegistry();
+        extensionsHookRegistry = new com.tapestry.extensions.DefaultHookRegistry(); // Phase 4 registry
+        tsHookRegistry = new com.tapestry.hooks.HookRegistry(); // TS handler registry
         tsRuntime = new TypeScriptRuntime();
         modDiscovery = new TsModDiscovery();
         
@@ -173,7 +175,7 @@ public class TapestryMod implements ModInitializer {
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
         
         // Initialize TypeScript runtime with mod loading capabilities
-        tsRuntime.initializeForModLoading(apiTree, modRegistry, hookRegistry);
+        tsRuntime.initializeForModLoading(apiTree, modRegistry, tsHookRegistry);
         
         // Discover all TypeScript mod files
         List<DiscoveredMod> discoveredMods;
@@ -203,10 +205,10 @@ public class TapestryMod implements ModInitializer {
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
         
         // Extend the tapestry object with hook APIs for TS_READY phase
-        tsRuntime.extendForReadyPhase(hookRegistry);
+        tsRuntime.extendForReadyPhase(tsHookRegistry);
         
         // Allow hook registration
-        hookRegistry.allowRegistration();
+        tsHookRegistry.allowRegistration();
         
         // Execute onLoad for all mods in deterministic order
         for (var mod : modRegistry.getMods()) {
@@ -224,7 +226,7 @@ public class TapestryMod implements ModInitializer {
         modRegistry.completeLoading();
         
         // Disallow further hook registration
-        hookRegistry.disallowRegistration();
+        tsHookRegistry.disallowRegistration();
         
         LOGGER.info("TypeScript mod loading complete");
     }

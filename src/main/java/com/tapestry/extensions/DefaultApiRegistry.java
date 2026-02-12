@@ -2,6 +2,7 @@ package com.tapestry.extensions;
 
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.graalvm.polyglot.proxy.ProxyObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,7 @@ public class DefaultApiRegistry implements ApiRegistry {
     
     private final PhaseController phaseController;
     private final Map<String, TapestryExtensionDescriptor> declaredCapabilities;
-    private final Map<String, ProxyExecutable> registeredFunctions;
+    private final Map<String, org.graalvm.polyglot.proxy.ProxyExecutable> registeredFunctions;
     private final Map<String, String> capabilityToApiPath;
     private final Map<String, String> apiPathToCapability;
     private volatile boolean frozen = false;
@@ -102,7 +103,7 @@ public class DefaultApiRegistry implements ApiRegistry {
     /**
      * Gets the registered function for a capability.
      */
-    public ProxyExecutable getFunction(String capabilityName) {
+    public org.graalvm.polyglot.proxy.ProxyExecutable getFunction(String capabilityName) {
         return registeredFunctions.get(capabilityName);
     }
     
@@ -124,7 +125,7 @@ public class DefaultApiRegistry implements ApiRegistry {
         for (var entry : capabilityToApiPath.entrySet()) {
             String capabilityName = entry.getKey();
             String apiPath = entry.getValue();
-            ProxyExecutable function = registeredFunctions.get(capabilityName);
+            org.graalvm.polyglot.proxy.ProxyExecutable function = registeredFunctions.get(capabilityName);
             
             if (function != null) {
                 // Parse API path like "tapestry.mods.infinite_dimensions.worldgen.resolveBlock"

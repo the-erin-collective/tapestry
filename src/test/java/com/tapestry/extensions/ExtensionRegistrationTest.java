@@ -2,6 +2,7 @@ package com.tapestry.extensions;
 
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -78,7 +79,7 @@ class ExtensionRegistrationTest {
         
         // Should be able to register before freeze
         assertDoesNotThrow(() -> {
-            apiRegistry.addFunction("test", args -> null);
+            apiRegistry.addFunction("test-extension", "test", args -> null);
         });
         
         // Freeze registry
@@ -86,7 +87,7 @@ class ExtensionRegistrationTest {
         
         // Should throw RegistryFrozenException after freeze
         assertThrows(RegistryFrozenException.class, () -> {
-            apiRegistry.addFunction("another", args -> null);
+            apiRegistry.addFunction("test-extension", "another", args -> null);
         });
     }
     

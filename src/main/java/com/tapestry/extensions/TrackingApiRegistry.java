@@ -1,5 +1,6 @@
 package com.tapestry.extensions;
 
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import java.util.Map;
 import java.util.Set;
 
