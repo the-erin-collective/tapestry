@@ -41,114 +41,72 @@ public class ExtensionValidator {
         PhaseController.getInstance().requirePhase(TapestryPhase.VALIDATION);
         
         TreeMap<String, ValidatedExtension> enabled = new TreeMap<>();
-        TreeMap<String, RejectedExtension> rejected = new TreeMap<>();
+        ArrayList<RejectedExtension> rejected = new ArrayList<>();
         ArrayList<ValidationMessage> warnings = new ArrayList<>();
         
         try {
-            // Extract descriptors for validation
-            var descriptors = ExtensionDiscovery.extractDescriptors(providers);
+            // Step 1: Group providers by ID for duplicate detection
+            Map<String, List<DiscoveredExtensionProvider>> providersById = groupProvidersById(providers);
             
-            // Sort capabilities within each descriptor for deterministic validation
-            var sortedProviders = providers.stream()
-                .map(p -> {
-                    var sortedCapabilities = p.descriptor().capabilities().stream()
-                        .sorted(Comparator.comparing(CapabilityDecl::name))
-                        .collect(Collectors.toList());
-                    
-                    var sortedDescriptor = new TapestryExtensionDescriptor(
-                        p.descriptor().id(),
-                        p.descriptor().displayName(),
-                        p.descriptor().version(),
-                        p.descriptor().minTapestry(),
-                        sortedCapabilities,
-                        p.descriptor().requires(),
-                        p.descriptor().optional()
-                    );
-                    
-                    return new DiscoveredExtensionProvider(p.provider(), p.sourceMod(), sortedDescriptor);
-                })
-                .collect(Collectors.toList());
+            // Step 2: Reject all duplicates
+            rejectDuplicateIds(providersById, rejected);
             
-            // Validate individual descriptors
-            for (var provider : sortedProviders) {
-                var descriptor = provider.descriptor();
-                ArrayList<ValidationMessage> errors = new ArrayList<>();
-                String modId = provider.sourceMod().getMetadata().getId();
-                
-                // Rule Group A: Descriptor shape
-                validateDescriptorShape(descriptor, errors, modId);
-                
-                // Rule Group C: Tapestry version compatibility
-                validateVersionCompatibility(descriptor, errors, modId);
-                
-                // Rule Group D: Capability well-formedness
-                validateCapabilityWellFormedness(descriptor, errors, modId);
-                
-                if (errors.isEmpty()) {
-                    // Only resolve dependencies if descriptor is otherwise valid
-                    var resolvedDeps = resolveDependencies(descriptor, descriptors, warnings, modId);
+            // Step 3: Validate individual descriptors (non-duplicates only)
+            Map<String, TapestryExtensionDescriptor> descriptors = new HashMap<>();
+            for (var entry : providersById.entrySet()) {
+                if (entry.getValue().size() == 1) {
+                    var provider = entry.getValue().get(0);
+                    var descriptor = provider.descriptor();
+                    descriptors.put(descriptor.id(), descriptor);
+                }
+            }
+            
+            // Now resolve dependencies for all valid descriptors
+            Map<String, List<String>> resolvedDepsByExtension = new HashMap<>();
+            for (var entry : providersById.entrySet()) {
+                if (entry.getValue().size() == 1) {
+                    var provider = entry.getValue().get(0);
+                    var descriptor = provider.descriptor();
+                    ArrayList<ValidationMessage> errors = new ArrayList<>();
+                    String modId = provider.sourceMod().getMetadata().getId();
                     
-                    // Check if there are any ERROR-level warnings (missing required deps)
-                    var hasRequiredDepErrors = warnings.stream()
-                        .anyMatch(w -> w.severity() == Severity.ERROR && 
-                            w.code().equals("MISSING_REQUIRED_DEPENDENCY"));
+                    // Rule Group A: Descriptor shape
+                    validateDescriptorShape(descriptor, errors, modId);
                     
-                    if (hasRequiredDepErrors) {
-                        // Reject due to missing required dependencies
-                        var rejectedExt = new RejectedExtension(descriptor, provider.sourceMod(), 
-                            warnings.stream()
-                                .filter(w -> w.severity() == Severity.ERROR)
-                                .toList());
-                        rejected.put(descriptor.id(), rejectedExt);
-                    } else {
+                    // Rule Group C: Tapestry version compatibility
+                    validateVersionCompatibility(descriptor, errors, modId);
+                    
+                    // Rule Group D: Capability well-formedness
+                    validateCapabilityWellFormedness(descriptor, errors, modId);
+                    
+                    if (errors.isEmpty()) {
+                        // Valid descriptor - resolve dependencies using complete descriptors map
+                        var resolvedDeps = resolveDependencies(descriptor, descriptors, warnings, modId);
+                        resolvedDepsByExtension.put(descriptor.id(), resolvedDeps);
+                        
                         var validated = new ValidatedExtension(
                             descriptor,
                             provider.sourceMod(),
                             descriptor.capabilities(),
-                            resolvedDeps
+                            resolvedDepsByExtension.get(descriptor.id())
                         );
                         enabled.put(descriptor.id(), validated);
+                    } else {
+                        // Invalid descriptor
+                        var rejectedExt = new RejectedExtension(descriptor, provider.sourceMod(), errors);
+                        rejected.add(rejectedExt);
                     }
-                } else {
-                    var rejectedExt = new RejectedExtension(descriptor, provider.sourceMod(), errors);
-                    rejected.put(descriptor.id(), rejectedExt);
                 }
             }
             
-            // Global validation (conflicts, cycles)
+            // Step 4: Global validation (conflicts, cycles)
             performGlobalValidation(enabled, rejected, warnings);
             
-            // Handle failFast policy
-            if (policy.failFast() && rejected.values().stream()
-                    .anyMatch(r -> r.errors().stream()
-                            .anyMatch(e -> e.severity() == Severity.ERROR))) {
-                // Find first error and throw to abort
-                var firstError = rejected.values().stream()
-                    .flatMap(r -> r.errors().stream())
-                    .filter(e -> e.severity() == Severity.ERROR)
-                    .findFirst()
-                    .orElseThrow();
-                
-                throw new RuntimeException("Validation failed fast: " + firstError.message());
-            }
+            // Step 5: Required dependency validation (must be enabled)
+            validateRequiredDependenciesEnabled(enabled, rejected);
             
-            // Handle disableInvalid policy
-            if (!policy.disableInvalid()) {
-                // If we're not disabling invalid extensions, any ERROR should fail startup
-                var hasAnyErrors = rejected.values().stream()
-                    .anyMatch(r -> r.errors().stream()
-                            .anyMatch(e -> e.severity() == Severity.ERROR));
-                
-                if (hasAnyErrors) {
-                    var firstError = rejected.values().stream()
-                        .flatMap(r -> r.errors().stream())
-                        .filter(e -> e.severity() == Severity.ERROR)
-                        .findFirst()
-                        .orElseThrow();
-                    
-                    throw new RuntimeException("Validation failed: " + firstError.message());
-                }
-            }
+            // Step 6: Handle policy
+            handlePolicy(enabled, rejected, warnings);
             
             LOGGER.info("Extension validation complete: {} enabled, {} rejected, {} warnings",
                 enabled.size(), rejected.size(), warnings.size());
@@ -157,6 +115,136 @@ public class ExtensionValidator {
             
         } finally {
             // No explicit cleanup needed - phase enforcement is enough
+        }
+    }
+    
+    /**
+     * Groups providers by extension ID for duplicate detection.
+     */
+    private Map<String, List<DiscoveredExtensionProvider>> groupProvidersById(List<DiscoveredExtensionProvider> providers) {
+        Map<String, List<DiscoveredExtensionProvider>> byId = new TreeMap<>();
+        
+        for (var provider : providers) {
+            var descriptor = provider.descriptor();
+            if (descriptor != null && descriptor.id() != null) {
+                byId.computeIfAbsent(descriptor.id(), k -> new ArrayList<>()).add(provider);
+            }
+        }
+        
+        return byId;
+    }
+    
+    /**
+     * Rejects all providers with duplicate IDs.
+     */
+    private void rejectDuplicateIds(
+            Map<String, List<DiscoveredExtensionProvider>> providersById,
+            List<RejectedExtension> rejected) {
+        
+        for (var entry : providersById.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                // Reject ALL providers with this ID
+                for (var provider : entry.getValue()) {
+                    var errors = List.of(new ValidationMessage(
+                        Severity.ERROR, "DUPLICATE_ID", 
+                        "Extension ID '" + entry.getKey() + "' is duplicated", 
+                        provider.descriptor().id()));
+                    
+                    var rejectedExt = new RejectedExtension(
+                        provider.descriptor(), 
+                        provider.sourceMod(), 
+                        errors);
+                    rejected.add(rejectedExt);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Validates that required dependencies are enabled extensions.
+     */
+    private void validateRequiredDependenciesEnabled(
+            TreeMap<String, ValidatedExtension> enabled,
+            List<RejectedExtension> rejected) {
+        
+        // Create set of enabled extension IDs
+        Set<String> enabledIds = enabled.keySet();
+        
+        // Check each enabled extension's required dependencies
+        List<ValidatedExtension> toReject = new ArrayList<>();
+        
+        for (var validated : enabled.values()) {
+            List<String> missingDeps = new ArrayList<>();
+            
+            if (validated.descriptor().requires() != null) {
+                for (String requiredDep : validated.descriptor().requires()) {
+                    if (!enabledIds.contains(requiredDep)) {
+                        missingDeps.add(requiredDep);
+                    }
+                }
+            }
+            
+            if (!missingDeps.isEmpty()) {
+                // Mark for rejection
+                toReject.add(validated);
+                
+                var errors = List.of(new ValidationMessage(
+                    Severity.ERROR, "MISSING_REQUIRED_DEPENDENCY", 
+                    "Required dependencies not enabled: " + String.join(", ", missingDeps), 
+                    validated.descriptor().id()));
+                
+                var rejectedExt = new RejectedExtension(
+                    validated.descriptor(), 
+                    validated.sourceMod(), 
+                    errors);
+                rejected.add(rejectedExt);
+            }
+        }
+        
+        // Remove rejected extensions from enabled
+        for (var toRemove : toReject) {
+            enabled.remove(toRemove.descriptor().id());
+        }
+    }
+    
+    /**
+     * Handles failFast and disableInvalid policies.
+     */
+    private void handlePolicy(
+            TreeMap<String, ValidatedExtension> enabled,
+            List<RejectedExtension> rejected,
+            List<ValidationMessage> warnings) {
+        
+        // Handle failFast policy
+        if (policy.failFast() && rejected.stream()
+                .anyMatch(r -> r.errors().stream()
+                        .anyMatch(e -> e.severity() == Severity.ERROR))) {
+            // Find first error and throw to abort
+            var firstError = rejected.stream()
+                .flatMap(r -> r.errors().stream())
+                .filter(e -> e.severity() == Severity.ERROR)
+                .findFirst()
+                .orElseThrow();
+            
+            throw new RuntimeException("Validation failed fast: " + firstError.message());
+        }
+        
+        // Handle disableInvalid policy
+        if (!policy.disableInvalid()) {
+            // If we're not disabling invalid extensions, any ERROR should fail startup
+            var hasAnyErrors = rejected.stream()
+                .anyMatch(r -> r.errors().stream()
+                        .anyMatch(e -> e.severity() == Severity.ERROR));
+            
+            if (hasAnyErrors) {
+                var firstError = rejected.stream()
+                    .flatMap(r -> r.errors().stream())
+                    .filter(e -> e.severity() == Severity.ERROR)
+                    .findFirst()
+                    .orElseThrow();
+                
+                throw new RuntimeException("Validation failed: " + firstError.message());
+            }
         }
     }
     
@@ -323,17 +411,8 @@ public class ExtensionValidator {
         // Resolve required dependencies
         if (descriptor.requires() != null) {
             for (String dep : descriptor.requires()) {
-                var depDescriptor = allDescriptors.get(dep);
-                if (depDescriptor != null) {
-                    // Check if dependency is enabled (will be determined later in global validation)
-                    // For now, we assume it could be enabled and add to resolved
+                if (allDescriptors.containsKey(dep)) {
                     resolved.add(dep);
-                } else {
-                    // Missing required dependency - this is an ERROR
-                    // We'll collect this and let global validation handle the rejection
-                    warnings.add(new ValidationMessage(
-                        Severity.ERROR, "MISSING_REQUIRED_DEPENDENCY", 
-                        "Required dependency '" + dep + "' not found", descriptor.id()));
                 }
             }
         }
@@ -359,11 +438,8 @@ public class ExtensionValidator {
      */
     private void performGlobalValidation(
             TreeMap<String, ValidatedExtension> enabled,
-            TreeMap<String, RejectedExtension> rejected,
+            List<RejectedExtension> rejected,
             List<ValidationMessage> warnings) {
-        
-        // Rule Group B: Unique extension IDs
-        validateUniqueExtensionIds(enabled, rejected);
         
         // Rule Group E: Capability conflicts
         validateCapabilityConflicts(enabled, rejected);
@@ -373,50 +449,11 @@ public class ExtensionValidator {
     }
     
     /**
-     * Rule Group B: Check for duplicate extension IDs.
-     */
-    private void validateUniqueExtensionIds(
-            TreeMap<String, ValidatedExtension> enabled,
-            TreeMap<String, RejectedExtension> rejected) {
-        
-        Map<String, List<DiscoveredExtensionProvider>> idToProviders = new HashMap<>();
-        
-        // Collect all providers by ID
-        for (var validated : enabled.values()) {
-            idToProviders.computeIfAbsent(validated.descriptor().id(), k -> new ArrayList<>())
-                .add(new DiscoveredExtensionProvider(null, validated.sourceMod(), validated.descriptor()));
-        }
-        
-        for (var rejectedExt : rejected.values()) {
-            idToProviders.computeIfAbsent(rejectedExt.descriptor().id(), k -> new ArrayList<>())
-                .add(new DiscoveredExtensionProvider(null, rejectedExt.sourceMod(), rejectedExt.descriptor()));
-        }
-        
-        // Find duplicates
-        for (var entry : idToProviders.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                // Default policy: reject ALL duplicates
-                for (var provider : entry.getValue()) {
-                    var errors = List.of(new ValidationMessage(
-                        Severity.ERROR, "DUPLICATE_ID", 
-                        "Extension ID '" + entry.getKey() + "' is duplicated", provider.descriptor().id()));
-                    
-                    rejected.put(provider.descriptor().id(), 
-                        new RejectedExtension(provider.descriptor(), provider.sourceMod(), errors));
-                    
-                    // Remove from enabled if it was there
-                    enabled.remove(provider.descriptor().id());
-                }
-            }
-        }
-    }
-    
-    /**
      * Rule Group E: Check for capability conflicts.
      */
     private void validateCapabilityConflicts(
             TreeMap<String, ValidatedExtension> enabled,
-            TreeMap<String, RejectedExtension> rejected) {
+            List<RejectedExtension> rejected) {
         
         Map<String, List<String>> capabilityToExtensions = new HashMap<>();
         
@@ -446,9 +483,11 @@ public class ExtensionValidator {
                             "Capability '" + entry.getKey() + "' is claimed by multiple extensions", 
                             extensionId));
                         
-                        rejected.put(extensionId, 
-                            new RejectedExtension(conflictingExtension.descriptor(), 
-                                conflictingExtension.sourceMod(), errors));
+                        var rejectedExt = new RejectedExtension(
+                            conflictingExtension.descriptor(), 
+                            conflictingExtension.sourceMod(), 
+                            errors);
+                        rejected.add(rejectedExt);
                         
                         // Remove from enabled
                         enabled.remove(extensionId);
@@ -463,7 +502,7 @@ public class ExtensionValidator {
      */
     private void validateDependencyCycles(
             TreeMap<String, ValidatedExtension> enabled,
-            TreeMap<String, RejectedExtension> rejected) {
+            List<RejectedExtension> rejected) {
         
         // Build dependency graph from enabled extensions
         Map<String, List<String>> graph = new HashMap<>();
@@ -476,12 +515,14 @@ public class ExtensionValidator {
         Deque<String> path = new ArrayDeque<>();
         
         for (String extensionId : graph.keySet()) {
+            // Clear path for fresh detection
+            path.clear();
             if (hasCycleOrdered(extensionId, graph, visited, path)) {
-                // Extract cycle path from the current path
+                // Extract cycle path from current path
                 List<String> cycle = new ArrayList<>();
                 boolean foundStart = false;
                 
-                // Build cycle from the path - find the start node and collect from there
+                // Build cycle from path - find start node and collect from there
                 for (String pathElement : path) {
                     if (foundStart) {
                         cycle.add(pathElement);
@@ -491,12 +532,12 @@ public class ExtensionValidator {
                     }
                 }
                 
-                // Add the start node again to complete the cycle
+                // Add start node again to complete the cycle
                 if (!cycle.isEmpty()) {
                     cycle.add(extensionId);
                 }
                 
-                // Reject all extensions in the cycle
+                // Reject all extensions in cycle
                 for (String cycleId : cycle) {
                     var cycleExtension = enabled.get(cycleId);
                     if (cycleExtension != null) {
@@ -505,17 +546,16 @@ public class ExtensionValidator {
                             "Dependency cycle detected: " + String.join(" -> ", cycle), 
                             cycleId));
                         
-                        rejected.put(cycleId, 
-                            new RejectedExtension(cycleExtension.descriptor(), 
-                                cycleExtension.sourceMod(), errors));
+                        var rejectedExt = new RejectedExtension(
+                            cycleExtension.descriptor(), 
+                            cycleExtension.sourceMod(), 
+                            errors);
+                        rejected.add(rejectedExt);
                         
                         // Remove from enabled
                         enabled.remove(cycleId);
                     }
                 }
-                
-                // Clear path for next cycle detection
-                path.clear();
             }
         }
     }
@@ -543,24 +583,11 @@ public class ExtensionValidator {
         List<String> dependencies = graph.getOrDefault(node, Collections.emptyList());
         for (String dep : dependencies) {
             if (hasCycleOrdered(dep, graph, visited, path)) {
-                return true; // Keep the cycle in the path
+                return true; // Keep cycle in path
             }
         }
         
-        path.removeLast();
+        path.removeLast(); // Remove current node when backtracking
         return false;
-    }
-    
-    /**
-     * Result of validating a single descriptor.
-     */
-    private record ValidationResult(
-            ValidatedExtension validated,
-            RejectedExtension rejected,
-            List<ValidationMessage> warnings
-    ) {
-        boolean isValid() {
-            return validated != null;
-        }
     }
 }

@@ -63,14 +63,13 @@ public class ExtensionValidationReportPrinter {
     /**
      * Prints rejected extensions with errors.
      */
-    private static void printRejectedExtensions(java.util.Map<String, RejectedExtension> rejected) {
+    private static void printRejectedExtensions(List<RejectedExtension> rejected) {
         if (rejected.isEmpty()) {
             return;
         }
         
         LOGGER.error("Rejected Extensions ({}):", rejected.size());
-        for (var entry : rejected.entrySet()) {
-            var extension = entry.getValue();
+        for (var extension : rejected) {
             String modId = extension.sourceMod().getMetadata().getId();
             
             LOGGER.error("  ✗ {} (from {})", extension.descriptor().id(), modId);
@@ -110,11 +109,11 @@ public class ExtensionValidationReportPrinter {
      */
     public static void printSummary(ExtensionValidationResult result) {
         int totalExtensions = result.enabled().size() + result.rejected().size();
-        int errorCount = result.rejected().values().stream()
+        int errorCount = result.rejected().stream()
             .mapToInt(r -> r.errors().size())
             .sum();
         int warningCount = result.warnings().size() + 
-            result.rejected().values().stream()
+            result.rejected().stream()
                 .flatMap(r -> r.errors().stream())
                 .mapToInt(e -> e.severity() == Severity.WARN ? 1 : 0)
                 .sum();
