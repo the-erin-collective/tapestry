@@ -35,7 +35,7 @@ public class DefaultApiRegistry implements ApiRegistry {
     }
     
     @Override
-    public void addFunction(String capabilityName, ProxyExecutable fn) 
+    public void addFunction(String extensionId, String capabilityName, ProxyExecutable fn) 
             throws RegistryFrozenException, UndeclaredCapabilityException, DuplicateApiPathException {
         
         // Phase check
@@ -51,14 +51,14 @@ public class DefaultApiRegistry implements ApiRegistry {
             throw new RegistryFrozenException();
         }
         
-        // Validate capability is declared
-        if (!isCapabilityDeclared(capabilityName)) {
-            throw new UndeclaredCapabilityException(capabilityName, "unknown");
+        // Validate capability is declared by this specific extension
+        if (!isCapabilityDeclaredByExtension(extensionId, capabilityName)) {
+            throw new UndeclaredCapabilityException(capabilityName, extensionId);
         }
         
         // Check if capability already registered
         if (registeredFunctions.containsKey(capabilityName)) {
-            throw new CapabilityAlreadyRegisteredException(capabilityName, "unknown");
+            throw new CapabilityAlreadyRegisteredException(capabilityName, extensionId);
         }
         
         // Get API path from declared capability
@@ -67,7 +67,7 @@ public class DefaultApiRegistry implements ApiRegistry {
         // Check for duplicate API path
         if (apiPathToCapability.containsKey(apiPath)) {
             String existingCapability = apiPathToCapability.get(apiPath);
-            throw new DuplicateApiPathException(apiPath, existingCapability, "current");
+            throw new DuplicateApiPathException(apiPath, existingCapability, extensionId);
         }
         
         // Register the function
@@ -75,7 +75,7 @@ public class DefaultApiRegistry implements ApiRegistry {
         capabilityToApiPath.put(capabilityName, apiPath);
         apiPathToCapability.put(apiPath, capabilityName);
         
-        LOGGER.debug("Registered API function: {} -> {}", capabilityName, apiPath);
+        LOGGER.debug("Extension {} registered API function: {} -> {}", extensionId, capabilityName, apiPath);
     }
     
     @Override
@@ -182,6 +182,23 @@ public class DefaultApiRegistry implements ApiRegistry {
                 if (capability.name().equals(capabilityName) && capability.type() == CapabilityType.API) {
                     return true;
                 }
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Checks if a capability is declared by a specific extension.
+     */
+    private boolean isCapabilityDeclaredByExtension(String extensionId, String capabilityName) {
+        var descriptor = declaredCapabilities.get(extensionId);
+        if (descriptor == null) {
+            return false;
+        }
+        
+        for (var capability : descriptor.capabilities()) {
+            if (capability.name().equals(capabilityName) && capability.type() == CapabilityType.API) {
+                return true;
             }
         }
         return false;

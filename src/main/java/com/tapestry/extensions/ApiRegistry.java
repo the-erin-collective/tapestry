@@ -9,13 +9,14 @@ public interface ApiRegistry {
     /**
      * Registers a function for the given capability.
      * 
+     * @param extensionId the ID of the extension registering the capability
      * @param capabilityName the capability name being registered
      * @param fn the function implementation
      * @throws RegistryFrozenException if registry is frozen
-     * @throws UndeclaredCapabilityException if capability wasn't declared
+     * @throws UndeclaredCapabilityException if capability wasn't declared by this extension
      * @throws DuplicateApiPathException if API path already exists
      */
-    void addFunction(String capabilityName, ProxyExecutable fn) 
+    void addFunction(String extensionId, String capabilityName, ProxyExecutable fn) 
         throws RegistryFrozenException, UndeclaredCapabilityException, DuplicateApiPathException;
     
     /**

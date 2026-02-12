@@ -131,14 +131,41 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("=== REGISTRATION PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         
-        // TODO: Register validated extensions here during capability registration
-        // For now, we just advance to FREEZE
+        // Build registries for capability registration
+        var phaseController = PhaseController.getInstance();
+        var declaredCapabilities = validationResult.enabled().values().stream()
+            .collect(java.util.stream.Collectors.toMap(
+                ext -> ext.descriptor().id(),
+                ValidatedExtension::descriptor
+            ));
+        
+        var apiRegistry = new DefaultApiRegistry(phaseController, declaredCapabilities);
+        var hookRegistry = new DefaultHookRegistry(phaseController, declaredCapabilities);
+        var serviceRegistry = new DefaultServiceRegistry(phaseController, declaredCapabilities);
+        
+        // Create orchestrator and register extensions
+        var orchestrator = new ExtensionRegistrationOrchestrator(
+            phaseController, apiRegistry, hookRegistry, serviceRegistry
+        );
+        
+        try {
+            orchestrator.registerExtensions(validationResult.enabled());
+            LOGGER.info("Extension registration completed successfully");
+        } catch (Exception e) {
+            LOGGER.error("Extension registration failed - aborting startup", e);
+            throw new RuntimeException("Extension registration failed", e);
+        }
         
         // FREEZE: Lock API surface
         LOGGER.info("=== FREEZE PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
-        api.freeze();
         
+        // Freeze registries and get the API tree for TypeScript
+        apiRegistry.freeze();
+        hookRegistry.freeze();
+        serviceRegistry.freeze();
+        
+        var apiTree = apiRegistry.getApiTree();
         LOGGER.info("API surface frozen - no further modifications allowed");
         
         // TS_LOAD: Initialize runtime and discover mods
@@ -146,7 +173,7 @@ public class TapestryMod implements ModInitializer {
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
         
         // Initialize TypeScript runtime with mod loading capabilities
-        tsRuntime.initializeForModLoading(api, modRegistry, hookRegistry);
+        tsRuntime.initializeForModLoading(apiTree, modRegistry, hookRegistry);
         
         // Discover all TypeScript mod files
         List<DiscoveredMod> discoveredMods;
@@ -175,8 +202,8 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("=== TS_READY PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
         
-        // Extend the tapestry object with full API for TS_READY phase
-        tsRuntime.extendForReadyPhase(api, hookRegistry);
+        // Extend the tapestry object with hook APIs for TS_READY phase
+        tsRuntime.extendForReadyPhase(hookRegistry);
         
         // Allow hook registration
         hookRegistry.allowRegistration();
@@ -185,7 +212,7 @@ public class TapestryMod implements ModInitializer {
         for (var mod : modRegistry.getMods()) {
             try {
                 LOGGER.info("Executing onLoad for mod: {}", mod.id());
-                tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id(), api);
+                tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id());
                 LOGGER.debug("Completed onLoad for mod: {}", mod.id());
             } catch (Exception e) {
                 LOGGER.error("Mod {} threw exception in onLoad", mod.id(), e);

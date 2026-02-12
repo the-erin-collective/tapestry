@@ -21,14 +21,19 @@ public class TrackingApiRegistry implements ApiRegistry {
     }
     
     @Override
-    public void addFunction(String capabilityName, ProxyExecutable fn) 
+    public void addFunction(String extensionId, String capabilityName, ProxyExecutable fn) 
             throws RegistryFrozenException, UndeclaredCapabilityException, DuplicateApiPathException {
         
-        // Track the capability registration
-        registeredCapabilities.get(extensionId).add(capabilityName);
+        // Validate that the extensionId matches this tracker's extension
+        if (!this.extensionId.equals(extensionId)) {
+            throw new IllegalArgumentException("Extension ID mismatch: expected " + this.extensionId + ", got " + extensionId);
+        }
         
-        // Delegate to actual registry
-        delegate.addFunction(capabilityName, fn);
+        // Delegate to actual registry first - only track if successful
+        delegate.addFunction(extensionId, capabilityName, fn);
+        
+        // Track the capability registration only after successful delegation
+        registeredCapabilities.get(extensionId).add(capabilityName);
     }
     
     @Override

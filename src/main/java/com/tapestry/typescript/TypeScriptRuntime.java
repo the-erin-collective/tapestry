@@ -1,6 +1,5 @@
 package com.tapestry.typescript;
 
-import com.tapestry.api.TapestryAPI;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
@@ -45,11 +44,11 @@ public class TypeScriptRuntime {
     /**
      * Initializes the TypeScript runtime with mod loading capabilities.
      * 
-     * @param api frozen TapestryAPI to expose
+     * @param apiTree frozen ProxyObject tree to expose as tapestry object
      * @param modRegistry the mod registry for registration
      * @param hookRegistry the hook registry for hook registration
      */
-    public void initializeForModLoading(TapestryAPI api, TsModRegistry modRegistry, HookRegistry hookRegistry) {
+    public void initializeForModLoading(ProxyObject apiTree, TsModRegistry modRegistry, HookRegistry hookRegistry) {
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
         
         if (initialized) {
@@ -70,8 +69,8 @@ public class TypeScriptRuntime {
                 .allowIO(false)
                 .build();
             
-            // Build minimal tapestry object for TS_LOAD phase
-            Object bindings = buildTapestryObjectForLoad();
+            // Build tapestry object with mod.define + extension APIs
+            Object bindings = buildTapestryObjectWithExtensions(apiTree);
             
             // Inject bindings into the context
             Map<String, Object> bindingsMap = (Map<String, Object>) bindings;
@@ -97,10 +96,9 @@ public class TypeScriptRuntime {
      * Extends the tapestry object for TS_READY phase.
      * This should be called when transitioning to TS_READY phase.
      * 
-     * @param api frozen TapestryAPI to expose
      * @param hookRegistry the hook registry for hook registration
      */
-    public void extendForReadyPhase(TapestryAPI api, HookRegistry hookRegistry) {
+    public void extendForReadyPhase(HookRegistry hookRegistry) {
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_READY);
         
         if (!initialized) {
@@ -108,8 +106,8 @@ public class TypeScriptRuntime {
         }
         
         try {
-            // Extend the tapestry object with full API
-            extendTapestryObjectForReady(api, hookRegistry);
+            // Extend the tapestry object with hook APIs
+            extendTapestryObjectForReady(hookRegistry);
             
             // Run TS_READY phase sanity check
             runSanityCheckForPhase(TapestryPhase.TS_READY);
@@ -123,10 +121,12 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Builds the minimal tapestry object for TS_LOAD phase using proper GraalVM proxies.
-     * Only exposes tapestry.mod.define and console functions.
+     * Builds the tapestry object combining mod.define with extension APIs.
+     * 
+     * @param apiTree the frozen ProxyObject tree from extension registration
+     * @return complete bindings map for JavaScript context
      */
-    private Object buildTapestryObjectForLoad() {
+    private Object buildTapestryObjectWithExtensions(ProxyObject apiTree) {
         // Create console namespace with ProxyExecutable functions
         Map<String, Object> console = new HashMap<>();
         console.put("log", (ProxyExecutable) args -> {
@@ -160,9 +160,17 @@ public class TypeScriptRuntime {
             return null;
         });
         
-        // Build minimal tapestry object
+        // Build complete tapestry object
         Map<String, Object> tapestry = new HashMap<>();
         tapestry.put("mod", ProxyObject.fromMap(mod));
+        
+        // Merge extension APIs into the tapestry object
+        if (apiTree != null) {
+            // Copy all members from the extension API tree
+            for (String key : apiTree.getMemberKeys()) {
+                tapestry.put(key, apiTree.getMember(key));
+            }
+        }
         
         // Return the complete bindings structure
         Map<String, Object> bindings = new HashMap<>();
@@ -171,14 +179,12 @@ public class TypeScriptRuntime {
         
         return bindings;
     }
-    
     /**
      * Extends the tapestry object for TS_READY phase using proper GraalVM proxies.
      * 
-     * @param api frozen API to expose
      * @param hookRegistry the hook registry for hook registration
      */
-    private void extendTapestryObjectForReady(TapestryAPI api, HookRegistry hookRegistry) {
+    private void extendTapestryObjectForReady(HookRegistry hookRegistry) {
         // Create worldgen API instance
         TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry);
         
@@ -236,9 +242,8 @@ public class TypeScriptRuntime {
      * 
      * @param onLoad Value function to execute
      * @param modId mod ID for context tracking
-     * @param api TapestryAPI to pass to the function (not used - we pass JS tapestry object instead)
      */
-    public void executeOnLoad(Value onLoad, String modId, TapestryAPI api) {
+    public void executeOnLoad(Value onLoad, String modId) {
         if (!initialized) {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
