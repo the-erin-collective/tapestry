@@ -317,7 +317,11 @@ public class ExtensionValidator {
             List<ValidationMessage> errors,
             String modId) {
         
-        for (var capability : descriptor.capabilities()) {
+        // Sort capabilities by name for deterministic error reporting
+        List<CapabilityDecl> sortedCapabilities = new ArrayList<>(descriptor.capabilities());
+        sortedCapabilities.sort((a, b) -> a.name().compareTo(b.name()));
+        
+        for (var capability : sortedCapabilities) {
             // Name validation
             if (capability.name() == null || capability.name().trim().isEmpty()) {
                 errors.add(new ValidationMessage(
@@ -455,7 +459,7 @@ public class ExtensionValidator {
             TreeMap<String, ValidatedExtension> enabled,
             List<RejectedExtension> rejected) {
         
-        Map<String, List<String>> capabilityToExtensions = new HashMap<>();
+        TreeMap<String, List<String>> capabilityToExtensions = new TreeMap<>();
         
         // Collect all capabilities by name and track which extensions claim them
         for (var validated : enabled.values()) {
@@ -469,6 +473,11 @@ public class ExtensionValidator {
                         .add(validated.descriptor().id());
                 }
             }
+        }
+        
+        // Sort extension ID lists for deterministic processing
+        for (var entry : capabilityToExtensions.entrySet()) {
+            entry.getValue().sort(String::compareTo);
         }
         
         // Find conflicts
@@ -504,17 +513,19 @@ public class ExtensionValidator {
             TreeMap<String, ValidatedExtension> enabled,
             List<RejectedExtension> rejected) {
         
-        // Build dependency graph from enabled extensions
-        Map<String, List<String>> graph = new HashMap<>();
+        // Build dependency graph from enabled extensions using TreeMap for deterministic order
+        TreeMap<String, List<String>> graph = new TreeMap<>();
         for (var validated : enabled.values()) {
-            graph.put(validated.descriptor().id(), validated.resolvedDependencies());
+            List<String> deps = new ArrayList<>(validated.resolvedDependencies());
+            deps.sort(String::compareTo); // Sort dependencies for deterministic processing
+            graph.put(validated.descriptor().id(), deps);
         }
         
         // Detect cycles using DFS with ordered path tracking
         Set<String> visited = new HashSet<>();
         Deque<String> path = new ArrayDeque<>();
         
-        for (String extensionId : graph.keySet()) {
+        for (String extensionId : graph.keySet()) { // TreeMap provides deterministic iteration order
             // Clear path for fresh detection
             path.clear();
             if (hasCycleOrdered(extensionId, graph, visited, path)) {
