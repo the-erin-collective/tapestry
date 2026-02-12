@@ -49,39 +49,70 @@ public class ExtensionValidator {
             var descriptors = ExtensionDiscovery.extractDescriptors(providers);
             
             // Sort capabilities within each descriptor for deterministic validation
-            for (var provider : providers) {
+            var sortedProviders = providers.stream()
+                .map(p -> {
+                    var sortedCapabilities = p.descriptor().capabilities().stream()
+                        .sorted(Comparator.comparing(CapabilityDecl::name))
+                        .collect(Collectors.toList());
+                    
+                    var sortedDescriptor = new TapestryExtensionDescriptor(
+                        p.descriptor().id(),
+                        p.descriptor().displayName(),
+                        p.descriptor().version(),
+                        p.descriptor().minTapestry(),
+                        sortedCapabilities,
+                        p.descriptor().requires(),
+                        p.descriptor().optional()
+                    );
+                    
+                    return new DiscoveredExtensionProvider(p.provider(), p.sourceMod(), sortedDescriptor);
+                })
+                .collect(Collectors.toList());
+            
+            // Validate individual descriptors
+            for (var provider : sortedProviders) {
                 var descriptor = provider.descriptor();
-                var sortedCapabilities = descriptor.capabilities().stream()
-                    .sorted(Comparator.comparing(CapabilityDecl::name))
-                    .collect(Collectors.toList());
+                ArrayList<ValidationMessage> errors = new ArrayList<>();
+                String modId = provider.sourceMod().getMetadata().getId();
                 
-                // Create new descriptor with sorted capabilities
-                var sortedDescriptor = new TapestryExtensionDescriptor(
-                    descriptor.id(),
-                    descriptor.displayName(),
-                    descriptor.version(),
-                    descriptor.minTapestry(),
-                    sortedCapabilities,
-                    descriptor.requires(),
-                    descriptor.optional()
-                );
+                // Rule Group A: Descriptor shape
+                validateDescriptorShape(descriptor, errors, modId);
                 
-                var sortedProvider = new DiscoveredExtensionProvider(
-                    provider.provider(),
-                    provider.sourceMod(),
-                    sortedDescriptor
-                );
+                // Rule Group C: Tapestry version compatibility
+                validateVersionCompatibility(descriptor, errors, modId);
                 
-                // Validate individual descriptor
-                var result = validateSingleDescriptor(sortedProvider, descriptors);
+                // Rule Group D: Capability well-formedness
+                validateCapabilityWellFormedness(descriptor, errors, modId);
                 
-                if (result.isValid()) {
-                    enabled.put(sortedDescriptor.id(), result.validated());
+                if (errors.isEmpty()) {
+                    // Only resolve dependencies if descriptor is otherwise valid
+                    var resolvedDeps = resolveDependencies(descriptor, descriptors, warnings, modId);
+                    
+                    // Check if there are any ERROR-level warnings (missing required deps)
+                    var hasRequiredDepErrors = warnings.stream()
+                        .anyMatch(w -> w.severity() == Severity.ERROR && 
+                            w.code().equals("MISSING_REQUIRED_DEPENDENCY"));
+                    
+                    if (hasRequiredDepErrors) {
+                        // Reject due to missing required dependencies
+                        var rejectedExt = new RejectedExtension(descriptor, provider.sourceMod(), 
+                            warnings.stream()
+                                .filter(w -> w.severity() == Severity.ERROR)
+                                .toList());
+                        rejected.put(descriptor.id(), rejectedExt);
+                    } else {
+                        var validated = new ValidatedExtension(
+                            descriptor,
+                            provider.sourceMod(),
+                            descriptor.capabilities(),
+                            resolvedDeps
+                        );
+                        enabled.put(descriptor.id(), validated);
+                    }
                 } else {
-                    rejected.put(sortedDescriptor.id(), result.rejected());
+                    var rejectedExt = new RejectedExtension(descriptor, provider.sourceMod(), errors);
+                    rejected.put(descriptor.id(), rejectedExt);
                 }
-                
-                warnings.addAll(result.warnings());
             }
             
             // Global validation (conflicts, cycles)
@@ -101,6 +132,24 @@ public class ExtensionValidator {
                 throw new RuntimeException("Validation failed fast: " + firstError.message());
             }
             
+            // Handle disableInvalid policy
+            if (!policy.disableInvalid()) {
+                // If we're not disabling invalid extensions, any ERROR should fail startup
+                var hasAnyErrors = rejected.values().stream()
+                    .anyMatch(r -> r.errors().stream()
+                            .anyMatch(e -> e.severity() == Severity.ERROR));
+                
+                if (hasAnyErrors) {
+                    var firstError = rejected.values().stream()
+                        .flatMap(r -> r.errors().stream())
+                        .filter(e -> e.severity() == Severity.ERROR)
+                        .findFirst()
+                        .orElseThrow();
+                    
+                    throw new RuntimeException("Validation failed: " + firstError.message());
+                }
+            }
+            
             LOGGER.info("Extension validation complete: {} enabled, {} rejected, {} warnings",
                 enabled.size(), rejected.size(), warnings.size());
             
@@ -108,45 +157,6 @@ public class ExtensionValidator {
             
         } finally {
             // No explicit cleanup needed - phase enforcement is enough
-        }
-    }
-    
-    /**
-     * Validates a single extension descriptor.
-     */
-    private ValidationResult validateSingleDescriptor(
-            DiscoveredExtensionProvider provider,
-            Map<String, TapestryExtensionDescriptor> allDescriptors) {
-        
-        var descriptor = provider.descriptor();
-        ArrayList<ValidationMessage> errors = new ArrayList<>();
-        ArrayList<ValidationMessage> warnings = new ArrayList<>();
-        String modId = provider.sourceMod().getMetadata().getId();
-        
-        // Rule Group A: Descriptor shape
-        validateDescriptorShape(descriptor, errors, modId);
-        
-        // Rule Group C: Tapestry version compatibility
-        validateVersionCompatibility(descriptor, errors, modId);
-        
-        // Rule Group D: Capability well-formedness
-        validateCapabilityWellFormedness(descriptor, errors, modId);
-        
-        if (errors.isEmpty()) {
-            // Only resolve dependencies if descriptor is otherwise valid
-            var resolvedDeps = resolveDependencies(descriptor, allDescriptors, warnings, modId);
-            
-            var validated = new ValidatedExtension(
-                descriptor,
-                provider.sourceMod(),
-                descriptor.capabilities(),
-                resolvedDeps
-            );
-            
-            return new ValidationResult(validated, null, warnings);
-        } else {
-            var rejected = new RejectedExtension(descriptor, provider.sourceMod(), errors);
-            return new ValidationResult(null, rejected, warnings);
         }
     }
     
@@ -313,12 +323,16 @@ public class ExtensionValidator {
         // Resolve required dependencies
         if (descriptor.requires() != null) {
             for (String dep : descriptor.requires()) {
-                if (allDescriptors.containsKey(dep)) {
+                var depDescriptor = allDescriptors.get(dep);
+                if (depDescriptor != null) {
+                    // Check if dependency is enabled (will be determined later in global validation)
+                    // For now, we assume it could be enabled and add to resolved
                     resolved.add(dep);
                 } else {
-                    // This will be handled by global validation
+                    // Missing required dependency - this is an ERROR
+                    // We'll collect this and let global validation handle the rejection
                     warnings.add(new ValidationMessage(
-                        Severity.WARN, "MISSING_REQUIRED_DEPENDENCY", 
+                        Severity.ERROR, "MISSING_REQUIRED_DEPENDENCY", 
                         "Required dependency '" + dep + "' not found", descriptor.id()));
                 }
             }
@@ -383,28 +397,15 @@ public class ExtensionValidator {
             if (entry.getValue().size() > 1) {
                 // Default policy: reject ALL duplicates
                 for (var provider : entry.getValue()) {
-                    var existingRejected = rejected.get(provider.descriptor().id());
-                    if (existingRejected != null) {
-                        // Already rejected, add error
-                        var errors = new ArrayList<>(existingRejected.errors());
-                        errors.add(new ValidationMessage(
-                            Severity.ERROR, "DUPLICATE_ID", 
-                            "Extension ID '" + entry.getKey() + "' is duplicated", provider.descriptor().id()));
-                        
-                        rejected.put(provider.descriptor().id(), 
-                            new RejectedExtension(provider.descriptor(), provider.sourceMod(), errors));
-                    } else {
-                        // Was enabled, now reject
-                        var errors = List.of(new ValidationMessage(
-                            Severity.ERROR, "DUPLICATE_ID", 
-                            "Extension ID '" + entry.getKey() + "' is duplicated", provider.descriptor().id()));
-                        
-                        rejected.put(provider.descriptor().id(), 
-                            new RejectedExtension(provider.descriptor(), provider.sourceMod(), errors));
-                        
-                        // Remove from enabled
-                        enabled.remove(provider.descriptor().id());
-                    }
+                    var errors = List.of(new ValidationMessage(
+                        Severity.ERROR, "DUPLICATE_ID", 
+                        "Extension ID '" + entry.getKey() + "' is duplicated", provider.descriptor().id()));
+                    
+                    rejected.put(provider.descriptor().id(), 
+                        new RejectedExtension(provider.descriptor(), provider.sourceMod(), errors));
+                    
+                    // Remove from enabled if it was there
+                    enabled.remove(provider.descriptor().id());
                 }
             }
         }
@@ -417,9 +418,9 @@ public class ExtensionValidator {
             TreeMap<String, ValidatedExtension> enabled,
             TreeMap<String, RejectedExtension> rejected) {
         
-        Map<String, List<CapabilityDecl>> capabilityToProviders = new HashMap<>();
+        Map<String, List<String>> capabilityToExtensions = new HashMap<>();
         
-        // Collect all capabilities by name
+        // Collect all capabilities by name and track which extensions claim them
         for (var validated : enabled.values()) {
             for (var capability : validated.capabilitiesResolved()) {
                 // Apply default exclusivity if flag is omitted
@@ -427,41 +428,30 @@ public class ExtensionValidator {
                     (capability.type() != CapabilityType.HOOK);
                 
                 if (isExclusive) {
-                    capabilityToProviders.computeIfAbsent(capability.name(), k -> new ArrayList<>())
-                        .add(capability);
+                    capabilityToExtensions.computeIfAbsent(capability.name(), k -> new ArrayList<>())
+                        .add(validated.descriptor().id());
                 }
             }
         }
         
         // Find conflicts
-        for (var entry : capabilityToProviders.entrySet()) {
+        for (var entry : capabilityToExtensions.entrySet()) {
             if (entry.getValue().size() > 1) {
                 // Conflict found - reject all conflicting extensions
-                for (var capability : entry.getValue()) {
-                    // Find the extension that owns this capability
-                    var conflictingExtension = enabled.values().stream()
-                        .filter(e -> e.capabilitiesResolved().contains(capability))
-                        .findFirst()
-                        .orElse(null);
-                    
+                for (String extensionId : entry.getValue()) {
+                    var conflictingExtension = enabled.get(extensionId);
                     if (conflictingExtension != null) {
-                        var errors = new ArrayList<>(rejected.getOrDefault(
-                            conflictingExtension.descriptor().id(), 
-                            new RejectedExtension(conflictingExtension.descriptor(), 
-                                conflictingExtension.sourceMod(), new ArrayList<>())
-                        ).errors());
-                        
-                        errors.add(new ValidationMessage(
+                        var errors = List.of(new ValidationMessage(
                             Severity.ERROR, "CAPABILITY_CONFLICT", 
                             "Capability '" + entry.getKey() + "' is claimed by multiple extensions", 
-                            conflictingExtension.descriptor().id()));
+                            extensionId));
                         
-                        rejected.put(conflictingExtension.descriptor().id(), 
+                        rejected.put(extensionId, 
                             new RejectedExtension(conflictingExtension.descriptor(), 
                                 conflictingExtension.sourceMod(), errors));
                         
                         // Remove from enabled
-                        enabled.remove(conflictingExtension.descriptor().id());
+                        enabled.remove(extensionId);
                     }
                 }
             }
@@ -481,14 +471,30 @@ public class ExtensionValidator {
             graph.put(validated.descriptor().id(), validated.resolvedDependencies());
         }
         
-        // Detect cycles using DFS
+        // Detect cycles using DFS with ordered path tracking
         Set<String> visited = new HashSet<>();
-        Set<String> recursionStack = new HashSet<>();
+        Deque<String> path = new ArrayDeque<>();
         
         for (String extensionId : graph.keySet()) {
-            if (hasCycle(extensionId, graph, visited, recursionStack)) {
-                // Find all nodes in the cycle
-                List<String> cycle = findCycle(extensionId, graph, recursionStack);
+            if (hasCycleOrdered(extensionId, graph, visited, path)) {
+                // Extract cycle path from the current path
+                List<String> cycle = new ArrayList<>();
+                boolean foundStart = false;
+                
+                // Build cycle from the path - find the start node and collect from there
+                for (String pathElement : path) {
+                    if (foundStart) {
+                        cycle.add(pathElement);
+                    }
+                    if (pathElement.equals(extensionId)) {
+                        foundStart = true;
+                    }
+                }
+                
+                // Add the start node again to complete the cycle
+                if (!cycle.isEmpty()) {
+                    cycle.add(extensionId);
+                }
                 
                 // Reject all extensions in the cycle
                 for (String cycleId : cycle) {
@@ -496,7 +502,7 @@ public class ExtensionValidator {
                     if (cycleExtension != null) {
                         var errors = List.of(new ValidationMessage(
                             Severity.ERROR, "DEPENDENCY_CYCLE", 
-                            "Dependency cycle detected: " + String.join(" -> ", cycle) + " -> " + cycleId, 
+                            "Dependency cycle detected: " + String.join(" -> ", cycle), 
                             cycleId));
                         
                         rejected.put(cycleId, 
@@ -507,20 +513,23 @@ public class ExtensionValidator {
                         enabled.remove(cycleId);
                     }
                 }
+                
+                // Clear path for next cycle detection
+                path.clear();
             }
         }
     }
     
     /**
-     * Detects if there's a cycle starting from the given node.
+     * Detects if there's a cycle starting from given node using ordered path tracking.
      */
-    private boolean hasCycle(
+    private boolean hasCycleOrdered(
             String node, 
             Map<String, List<String>> graph, 
             Set<String> visited, 
-            Set<String> recursionStack) {
+            Deque<String> path) {
         
-        if (recursionStack.contains(node)) {
+        if (path.contains(node)) {
             return true; // Cycle detected
         }
         
@@ -529,47 +538,17 @@ public class ExtensionValidator {
         }
         
         visited.add(node);
-        recursionStack.add(node);
+        path.addLast(node);
         
         List<String> dependencies = graph.getOrDefault(node, Collections.emptyList());
         for (String dep : dependencies) {
-            if (hasCycle(dep, graph, visited, recursionStack)) {
-                return true;
+            if (hasCycleOrdered(dep, graph, visited, path)) {
+                return true; // Keep the cycle in the path
             }
         }
         
-        recursionStack.remove(node);
+        path.removeLast();
         return false;
-    }
-    
-    /**
-     * Finds the actual cycle path for reporting.
-     */
-    private List<String> findCycle(
-            String startNode, 
-            Map<String, List<String>> graph, 
-            Set<String> recursionStack) {
-        
-        List<String> cycle = new ArrayList<>();
-        String current = startNode;
-        
-        // Find where the cycle starts
-        int startIndex = -1;
-        List<String> path = new ArrayList<>(recursionStack);
-        path.add(current);
-        
-        for (int i = 0; i < path.size(); i++) {
-            if (path.get(i).equals(current)) {
-                startIndex = i;
-                break;
-            }
-        }
-        
-        if (startIndex >= 0) {
-            cycle.addAll(path.subList(startIndex, path.size()));
-        }
-        
-        return cycle;
     }
     
     /**

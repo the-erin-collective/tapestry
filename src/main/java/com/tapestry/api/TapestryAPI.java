@@ -1,6 +1,6 @@
 package com.tapestry.api;
 
-import com.tapestry.extension.TapestryExtensionContext;
+import com.tapestry.extensions.TapestryExtensionContext;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
 import org.slf4j.Logger;
