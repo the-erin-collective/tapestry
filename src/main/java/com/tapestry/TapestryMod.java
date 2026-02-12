@@ -1,10 +1,10 @@
 package com.tapestry;
 
 import com.tapestry.api.TapestryAPI;
-import com.tapestry.extension.ExtensionRegistry;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.typescript.DiscoveredMod;
 import com.tapestry.typescript.TsModDiscovery;
 import com.tapestry.typescript.TsModRegistry;
 import com.tapestry.typescript.TypeScriptRuntime;
@@ -12,6 +12,7 @@ import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -25,7 +26,6 @@ public class TapestryMod implements ModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger(TapestryMod.class);
     
     private static TapestryAPI api;
-    private static ExtensionRegistry extensionRegistry;
     private static TsModRegistry modRegistry;
     private static HookRegistry hookRegistry;
     private static TypeScriptRuntime tsRuntime;
@@ -59,7 +59,6 @@ public class TapestryMod implements ModInitializer {
         
         // Initialize core components
         api = new TapestryAPI();
-        extensionRegistry = new ExtensionRegistry(api);
         modRegistry = new TsModRegistry();
         hookRegistry = new HookRegistry();
         tsRuntime = new TypeScriptRuntime();
@@ -70,12 +69,10 @@ public class TapestryMod implements ModInitializer {
         // DISCOVERY: Discover Java extensions
         LOGGER.info("=== DISCOVERY PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
-        extensionRegistry.discoverExtensions();
         
         // REGISTRATION: Register Java extensions
         LOGGER.info("=== REGISTRATION PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
-        extensionRegistry.registerExtensions();
         
         // FREEZE: Lock API surface
         LOGGER.info("=== FREEZE PHASE ===");
@@ -99,18 +96,22 @@ public class TapestryMod implements ModInitializer {
         tsRuntime.initializeForModLoading(api, modRegistry, hookRegistry);
         
         // Discover all TypeScript mod files
-        List<String> modFiles = modDiscovery.discoverMods();
+        List<DiscoveredMod> discoveredMods;
+        try {
+            discoveredMods = modDiscovery.discoverMods();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to discover TypeScript mods", e);
+        }
         
         // Evaluate all mod scripts (mod definition only)
-        for (String modFile : modFiles) {
+        for (DiscoveredMod mod : discoveredMods) {
             try {
-                String source = readModSource(modFile);
-                String sourceName = extractSourceName(modFile);
-                tsRuntime.evaluateScript(source, sourceName);
-                LOGGER.debug("Loaded mod script: {}", sourceName);
+                String source = readModSource(mod);
+                tsRuntime.evaluateScript(source, mod.sourceName());
+                LOGGER.debug("Loaded mod script: {}", mod.sourceName());
             } catch (Exception e) {
-                LOGGER.error("Failed to load mod: {}", modFile, e);
-                throw new RuntimeException("Mod loading failed: " + modFile, e);
+                LOGGER.error("Failed to load mod: {}", mod.sourceName(), e);
+                throw new RuntimeException("Mod loading failed: " + mod.sourceName(), e);
             }
         }
         
@@ -150,15 +151,24 @@ public class TapestryMod implements ModInitializer {
     
     /**
      * Reads the contents of a mod file.
+     * Handles both filesystem and classpath mods.
      * 
-     * @param modFile path to mod file
+     * @param mod discovered mod information
      * @return file contents
      */
-    private static String readModSource(String modFile) {
+    private static String readModSource(DiscoveredMod mod) {
         try {
-            return java.nio.file.Files.readString(java.nio.file.Paths.get(modFile));
+            if (mod.classpath()) {
+                // For classpath mods, read using InputStream (works for JAR files)
+                try (var in = java.nio.file.Files.newInputStream(mod.path())) {
+                    return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            } else {
+                // For filesystem mods, read directly
+                return java.nio.file.Files.readString(mod.path());
+            }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to read mod file: " + modFile, e);
+            throw new RuntimeException("Failed to read mod file: " + mod.sourceName(), e);
         }
     }
     
@@ -180,16 +190,6 @@ public class TapestryMod implements ModInitializer {
      */
     public TapestryAPI getAPI() {
         return api;
-    }
-    
-    /**
-     * Gets the ExtensionRegistry instance.
-     * This is primarily for testing and internal use.
-     * 
-     * @return the ExtensionRegistry instance
-     */
-    public ExtensionRegistry getExtensionRegistry() {
-        return extensionRegistry;
     }
     
     /**

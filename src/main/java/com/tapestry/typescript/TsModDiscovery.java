@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -26,28 +27,87 @@ public class TsModDiscovery {
     private static final String ASSETS_DIR = "assets/tapestry/mods";
     
     /**
-     * Discovers TypeScript mod files from filesystem.
+     * Discovers TypeScript mods from Fabric mod containers (JARs or directories).
      * 
-     * @return list of mod file paths
+     * @return list of discovered classpath mods
+     * @throws IOException if scanning fails
      */
-    public List<String> discoverMods() {
-        List<String> modFiles = new ArrayList<>();
+    private static List<DiscoveredMod> discoverClasspathMods() throws IOException {
+        List<DiscoveredMod> discovered = new ArrayList<>();
         
-        // Only scan filesystem for Phase 2
-        // Classpath discovery is deferred to future phases
-        scanFilesystemMods(modFiles);
+        var fabricLoader = FabricLoader.getInstance();
+        if (fabricLoader == null) {
+            LOGGER.debug("FabricLoader not available in test environment");
+            return discovered;
+        }
         
-        LOGGER.info("Discovered {} TypeScript mod files", modFiles.size());
-        return Collections.unmodifiableList(modFiles);
+        for (var container : fabricLoader.getAllMods()) {
+            String modId = container.getMetadata().getId();
+            
+            for (Path root : container.getRootPaths()) {
+                Path tapestryPath = root.resolve("assets/tapestry/mods");
+                
+                if (!Files.exists(tapestryPath)) {
+                    continue;
+                }
+                
+                try (Stream<Path> walk = Files.walk(tapestryPath)) {
+                    walk
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.toString().endsWith(".js"))
+                        .forEach(path -> {
+                            String relative = tapestryPath.relativize(path).toString().replace("\\", "/");
+                            String sourceName = "classpath:" + modId + "/" + relative;
+                            
+                            discovered.add(new DiscoveredMod(
+                                path,
+                                sourceName,
+                                true  // mark as classpath
+                            ));
+                        });
+                }
+            }
+        }
+        
+        // Deterministic ordering
+        discovered.sort(Comparator.comparing(DiscoveredMod::sourceName));
+        
+        return discovered;
+    }
+    
+    /**
+     * Discovers TypeScript mod files from filesystem and classpath resources.
+     * 
+     * @return list of discovered mods
+     * @throws IOException if scanning fails
+     */
+    public static List<DiscoveredMod> discoverMods() throws IOException {
+        List<DiscoveredMod> all = new ArrayList<>();
+        
+        all.addAll(scanFilesystemMods());
+        all.addAll(discoverClasspathMods());
+        
+        // Final deterministic order across both sources
+        all.sort(Comparator.comparing(DiscoveredMod::sourceName));
+        
+        LOGGER.info("Discovered {} TypeScript mod files ({} filesystem, {} classpath)", 
+            all.size(), 
+            all.stream().mapToInt(m -> m.classpath() ? 0 : 1).sum(),
+            all.stream().mapToInt(m -> m.classpath() ? 1 : 0).sum());
+        
+        return all;
     }
     
     /**
      * Scans filesystem for mod files.
      * Uses Fabric's config directory for discovery.
      * 
-     * @param modFiles list to add discovered files to
+     * @return list of discovered filesystem mods
+     * @throws IOException if scanning fails
      */
-    private void scanFilesystemMods(List<String> modFiles) {
+    private static List<DiscoveredMod> scanFilesystemMods() throws IOException {
+        List<DiscoveredMod> modFiles = new ArrayList<>();
+        
         try {
             // Use Fabric's config directory
             Path configDir;
@@ -55,24 +115,24 @@ public class TsModDiscovery {
                 var fabricLoader = FabricLoader.getInstance();
                 if (fabricLoader == null) {
                     LOGGER.debug("FabricLoader not available in test environment");
-                    return;
+                    return modFiles;
                 }
                 
                 Path fabricConfigDir = fabricLoader.getConfigDir();
                 if (fabricConfigDir == null) {
                     LOGGER.debug("Config directory not available in test environment");
-                    return;
+                    return modFiles;
                 }
                 
                 configDir = fabricConfigDir.resolve("tapestry/mods");
             } catch (Exception e) {
                 LOGGER.debug("FabricLoader not available in test environment: {}", e.getMessage());
-                return;
+                return modFiles;
             }
             
             if (!Files.exists(configDir)) {
                 LOGGER.debug("Config directory does not exist: {}", configDir);
-                return;
+                return modFiles;
             }
             
             // Recursively scan for .js files
@@ -85,8 +145,15 @@ public class TsModDiscovery {
                     .toList();
                 
                 for (Path file : files) {
-                    modFiles.add(file.toString());
-                    LOGGER.debug("Found filesystem mod: {}", file);
+                    String relative = configDir.relativize(file).toString().replace("\\", "/");
+                    String sourceName = "filesystem:" + relative;
+                    
+                    modFiles.add(new DiscoveredMod(
+                        file,
+                        sourceName,
+                        false  // mark as filesystem
+                    ));
+                    LOGGER.debug("Found filesystem mod: {}", sourceName);
                 }
             }
             
@@ -94,6 +161,8 @@ public class TsModDiscovery {
             LOGGER.error("Failed to scan filesystem mods directory", e);
             throw new RuntimeException("Failed to scan filesystem mods", e);
         }
+        
+        return modFiles;
     }    
     /**
      * Checks if a path is hidden.

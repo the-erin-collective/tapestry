@@ -5,6 +5,7 @@ import com.tapestry.lifecycle.TapestryPhase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,10 +28,14 @@ public class TsModDiscoveryTest {
     @Test
     void testDiscoverModsEmptyDirectory() {
         // Test basic functionality - just ensure method doesn't crash
-        var mods = discovery.discoverMods();
-        assertNotNull(mods);
-        // In test environment, this will likely be empty due to no FabricLoader
-        // The important thing is that it doesn't throw NullPointerException
+        try {
+            var mods = discovery.discoverMods();
+            assertNotNull(mods);
+            // In test environment, this will likely be empty due to no FabricLoader
+            // The important thing is that it doesn't throw NullPointerException
+        } catch (IOException e) {
+            fail("Should not throw IOException: " + e.getMessage());
+        }
     }
     
     @Test
