@@ -20,6 +20,12 @@ public enum TapestryPhase {
     DISCOVERY,
     
     /**
+     * Extensions are discovered and validated with no backend side effects.
+     * Pure validation stage - no mutations allowed.
+     */
+    VALIDATION,
+    
+    /**
      * Extensions are allowed to define API shape.
      * This is the only phase where the API surface may change.
      */
