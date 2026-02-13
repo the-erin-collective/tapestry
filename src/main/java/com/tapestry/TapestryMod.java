@@ -7,12 +7,14 @@ import com.tapestry.extensions.*;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.players.PlayerService;
 import com.tapestry.scheduler.SchedulerService;
 import com.tapestry.state.ModStateService;
 import com.tapestry.typescript.DiscoveredMod;
 import com.tapestry.typescript.TsModDiscovery;
 import com.tapestry.typescript.TsModRegistry;
 import com.tapestry.typescript.TypeScriptRuntime;
+import com.tapestry.typescript.PlayersApi;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,12 @@ public class TapestryMod implements ModInitializer {
     private static com.tapestry.hooks.HookRegistry tsHookRegistry; // TS handler registry
     private static TypeScriptRuntime tsRuntime;
     private static TsModDiscovery modDiscovery;
+    private static PlayerService playerService;
+    private static SchedulerService schedulerService;
+    private static EventBus eventBus;
+    private static ConfigService configService;
+    private static ModStateService stateService;
+    private static PlayersApi playersApi;
     
     // Phase 3: Extension validation
     private static ExtensionValidationResult validationResult;
@@ -149,6 +157,9 @@ public class TapestryMod implements ModInitializer {
         var hookRegistry = new DefaultHookRegistry(phaseController, declaredCapabilities);
         var serviceRegistry = new DefaultServiceRegistry(phaseController, declaredCapabilities);
         
+        // Register core Phase 7 player capabilities
+        registerCoreCapabilities(apiRegistry);
+        
         // Create orchestrator and register extensions
         var orchestrator = new ExtensionRegistrationOrchestrator(
             phaseController, apiRegistry, hookRegistry, serviceRegistry
@@ -253,10 +264,14 @@ public class TapestryMod implements ModInitializer {
         
         try {
             // Initialize Phase 6 services
-            SchedulerService schedulerService = new SchedulerService();
-            EventBus eventBus = new EventBus();
-            ConfigService configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
-            ModStateService stateService = new ModStateService();
+            schedulerService = new SchedulerService();
+            eventBus = new EventBus();
+            configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
+            stateService = new ModStateService();
+            playerService = new PlayerService(null); // Will be updated with server instance later
+            
+            // Update PlayersApi with actual PlayerService
+            playersApi.setPlayerService(playerService);
             
             // Load configurations for all mods
             for (var mod : modRegistry.getMods()) {
@@ -278,6 +293,7 @@ public class TapestryMod implements ModInitializer {
             LOGGER.info("- EventBus: {} event types", eventBus.getEventNames().size());
             LOGGER.info("- ConfigService: ready");
             LOGGER.info("- ModStateService: ready");
+            LOGGER.info("- PlayerService: ready");
             
             LOGGER.info("Phase 6 runtime initialization complete - server is live!");
             
@@ -348,6 +364,53 @@ public class TapestryMod implements ModInitializer {
      */
     public TypeScriptRuntime getTypeScriptRuntime() {
         return tsRuntime;
+    }
+    
+    /**
+     * Gets the current server instance.
+     * This is primarily for testing and internal use.
+     * 
+     * @return the server instance or null if not available
+     */
+    public static net.minecraft.server.MinecraftServer getServer() {
+        // This would need to be stored when server becomes available
+        // For now, return null as server isn't available during initialization
+        return null;
+    }
+    
+    /**
+     * Registers core Phase 7 player capabilities.
+     * 
+     * @param apiRegistry the API registry to register functions to
+     */
+    private static void registerCoreCapabilities(DefaultApiRegistry apiRegistry) {
+        try {
+            // Create PlayersApi instance
+            playersApi = new PlayersApi(null); // Will be updated later with actual PlayerService
+            
+            // Register player identity & discovery APIs
+            apiRegistry.addFunction("players.list", playersApi.createNamespace().getMember("list"));
+            apiRegistry.addFunction("players.get", playersApi.createNamespace().getMember("get"));
+            apiRegistry.addFunction("players.findByName", playersApi.createNamespace().getMember("findByName"));
+            
+            // Register player messaging APIs
+            apiRegistry.addFunction("players.sendChat", playersApi.createNamespace().getMember("sendChat"));
+            apiRegistry.addFunction("players.sendActionBar", playersApi.createNamespace().getMember("sendActionBar"));
+            apiRegistry.addFunction("players.sendTitle", playersApi.createNamespace().getMember("sendTitle"));
+            
+            // Register player query APIs
+            apiRegistry.addFunction("players.getPosition", playersApi.createNamespace().getMember("getPosition"));
+            apiRegistry.addFunction("players.getLook", playersApi.createNamespace().getMember("getLook"));
+            apiRegistry.addFunction("players.getGameMode", playersApi.createNamespace().getMember("getGameMode"));
+            
+            // Register raycasting API
+            apiRegistry.addFunction("players.raycastBlock", playersApi.createNamespace().getMember("raycastBlock"));
+            
+            LOGGER.info("Core Phase 7 player capabilities registered");
+        } catch (Exception e) {
+            LOGGER.error("Failed to register core player capabilities", e);
+            throw new RuntimeException("Core capability registration failed", e);
+        }
     }
     
     /**

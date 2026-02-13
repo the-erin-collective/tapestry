@@ -38,6 +38,7 @@ public class TapestryAPI {
         domains.put("worldgen", new HashMap<String, Object>());
         domains.put("events", new HashMap<String, Object>());
         domains.put("core", new HashMap<String, Object>());
+        domains.put("players", new HashMap<String, Object>());
         
         LOGGER.debug("TapestryAPI initialized with default domains");
     }

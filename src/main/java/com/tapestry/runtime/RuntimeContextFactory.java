@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 
 /**
  * Factory for creating immutable context objects for runtime callbacks.
@@ -226,6 +227,40 @@ public class RuntimeContextFactory {
             // Sort additional fields for deterministic ordering
             Map<String, Object> sortedFields = new TreeMap<>(additionalFields);
             context.putAll(sortedFields);
+        }
+        
+        return ProxyObject.fromMap(context);
+    }
+    
+    /**
+     * Creates a player event context with canonical shape.
+     * 
+     * @param modId the mod ID
+     * @param playerUuid player UUID
+     * @param playerName player name
+     * @param worldId the world ID
+     * @param tick the current tick
+     * @param extraFields additional context fields
+     * @return immutable context object
+     */
+    public static ProxyObject createPlayerEventContext(String modId, String playerUuid, 
+                                                  String playerName, String worldId, 
+                                                  long tick, Map<String, Object> extraFields) {
+        Map<String, Object> context = new TreeMap<>();
+        context.put("modId", modId);
+        context.put("tick", tick);
+        context.put("worldId", worldId);
+        
+        // Player object
+        Map<String, Object> player = new TreeMap<>();
+        player.put("uuid", playerUuid);
+        player.put("name", playerName);
+        context.put("player", ProxyObject.fromMap(player));
+        
+        // Add extra fields if provided
+        if (extraFields != null) {
+            Map<String, Object> sortedExtras = new TreeMap<>(extraFields);
+            context.putAll(sortedExtras);
         }
         
         return ProxyObject.fromMap(context);
