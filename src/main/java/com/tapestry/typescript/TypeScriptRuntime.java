@@ -5,6 +5,9 @@ import com.tapestry.events.EventBus;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.persistence.PersistenceService;
+import com.tapestry.persistence.ModStateStore;
+import com.tapestry.persistence.PersistenceApi;
 import com.tapestry.scheduler.SchedulerService;
 import com.tapestry.state.ModStateService;
 import org.graalvm.polyglot.Context;
@@ -386,6 +389,14 @@ public class TypeScriptRuntime {
         TsStateApi stateApi = new TsStateApi(stateService);
         TsRuntimeApi runtimeApi = new TsRuntimeApi();
         
+        // Create Phase 9 persistence API
+        PersistenceApi persistenceApi = null;
+        if (PersistenceService.getInstance().isInitialized()) {
+            // Note: This will be per-mod, so we'll create it lazily when mods request it
+            // For now, we'll inject a factory that creates per-mod instances
+            persistenceApi = createPersistenceApiFactory();
+        }
+        
         // Add Phase 6 namespaces
         tapestryValue.putMember("scheduler", schedulerApi.createNamespace());
         tapestryValue.putMember("events", eventsApi.createNamespace());
@@ -393,7 +404,58 @@ public class TypeScriptRuntime {
         tapestryValue.putMember("state", stateApi.createNamespace());
         tapestryValue.putMember("runtime", runtimeApi.createNamespace());
         
-        LOGGER.debug("Extended tapestry object for RUNTIME phase with Phase 6 APIs");
+        // Add Phase 9 persistence namespace if available
+        if (persistenceApi != null) {
+            tapestryValue.putMember("persistence", persistenceApi);
+        }
+        
+        LOGGER.debug("Extended tapestry object for RUNTIME phase with Phase 6-9 APIs");
+    }
+    
+    /**
+     * Creates a persistence API factory that provides per-mod persistence access.
+     * 
+     * @return a ProxyObject that creates per-mod persistence instances
+     */
+    private PersistenceApi createPersistenceApiFactory() {
+        return new PersistenceApi() {
+            @Override
+            public Object getMember(String key) {
+                if ("getModStore".equals(key)) {
+                    return new ProxyExecutable() {
+                        @Override
+                        public Object execute(Value... arguments) {
+                            if (arguments.length != 1) {
+                                throw new IllegalArgumentException("getModStore() requires exactly 1 argument (modId)");
+                            }
+                            
+                            String modId = arguments[0].asString();
+                            String currentModId = getCurrentModId();
+                            
+                            if (!modId.equals(currentModId)) {
+                                throw new IllegalArgumentException(
+                                    "Mod '" + currentModId + "' cannot access persistence for mod '" + modId + "'");
+                            }
+                            
+                            ModStateStore store = PersistenceService.getInstance().getModStateStore(modId);
+                            return toHostValue(store);
+                        }
+                    };
+                }
+                
+                return null; // Factory mode - only support specific methods
+            }
+            
+            @Override
+            public Object getMemberKeys() {
+                return new String[]{"getModStore"};
+            }
+            
+            @Override
+            public boolean hasMember(String key) {
+                return "getModStore".equals(key);
+            }
+        };
     }
     
     /**
@@ -552,5 +614,31 @@ public class TypeScriptRuntime {
         }
         initialized = false;
         LOGGER.info("TypeScript runtime closed");
+    }
+    
+    /**
+     * Converts a Java object to a JavaScript value.
+     * 
+     * @param obj the Java object to convert
+     * @return the JavaScript value
+     */
+    public static Value toHostValue(Object obj) {
+        if (obj == null) {
+            return jsContext.asValue(null);
+        }
+        return jsContext.asValue(obj);
+    }
+    
+    /**
+     * Converts a JavaScript value to a Java object.
+     * 
+     * @param value the JavaScript value to convert
+     * @return the Java object
+     */
+    public static Object fromValue(Value value) {
+        if (value.isNull()) {
+            return null;
+        }
+        return value.as(Object.class);
     }
 }

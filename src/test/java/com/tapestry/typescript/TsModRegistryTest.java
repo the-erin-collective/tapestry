@@ -24,6 +24,7 @@ public class TsModRegistryTest {
     @Test
     void testGetModsDeterministicOrder() {
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
@@ -39,6 +40,7 @@ public class TsModRegistryTest {
     @Test
     void testCompleteDiscoveryEmpty() {
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
@@ -53,6 +55,7 @@ public class TsModRegistryTest {
     @Test
     void testCompleteLoadingEmpty() {
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);

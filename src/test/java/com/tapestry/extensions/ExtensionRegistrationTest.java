@@ -25,11 +25,13 @@ class ExtensionRegistrationTest {
     
     @BeforeEach
     void setUp() {
+        // Reset the singleton phase controller for clean testing
+        PhaseController.reset();
+        
         // Use real PhaseController instance
         phaseController = PhaseController.getInstance();
         
-        // Reset to BOOTSTRAP then advance to REGISTRATION for testing
-        phaseController.advanceTo(TapestryPhase.BOOTSTRAP);
+        // Advance to REGISTRATION for testing
         phaseController.advanceTo(TapestryPhase.DISCOVERY);
         phaseController.advanceTo(TapestryPhase.VALIDATION);
         phaseController.advanceTo(TapestryPhase.REGISTRATION);
@@ -59,27 +61,43 @@ class ExtensionRegistrationTest {
     
     @Test
     void testPhaseBoundaryEnforcement() {
-        // Setup phase controller in wrong phase
-        when(phaseController.getCurrentPhase()).thenReturn(TapestryPhase.VALIDATION);
+        // Reset the singleton to start fresh
+        PhaseController.reset();
         
-        // Should throw WrongPhaseException
+        // Create a new phase controller in wrong phase
+        PhaseController wrongPhaseController = PhaseController.getInstance();
+        wrongPhaseController.advanceTo(TapestryPhase.DISCOVERY);
+        wrongPhaseController.advanceTo(TapestryPhase.VALIDATION);
+        // Stop at VALIDATION phase (not REGISTRATION)
+        
+        // Create registries with declared capabilities
+        var descriptor = createDescriptorWithApi("test", "tapestry.test.api");
+        Map<String, TapestryExtensionDescriptor> declaredCapabilities = Map.of("test", descriptor);
+        var apiRegistry = new DefaultApiRegistry(wrongPhaseController, declaredCapabilities);
+        var hookRegistry = new DefaultHookRegistry(wrongPhaseController, declaredCapabilities);
+        var serviceRegistry = new DefaultServiceRegistry(wrongPhaseController, declaredCapabilities);
+        
+        // Create orchestrator (constructor doesn't check phase)
+        ExtensionRegistrationOrchestrator orchestrator = new ExtensionRegistrationOrchestrator(
+            wrongPhaseController, apiRegistry, hookRegistry, serviceRegistry
+        );
+        
+        // Should throw WrongPhaseException when trying to register extensions in wrong phase
         assertThrows(WrongPhaseException.class, () -> {
-            new ExtensionRegistrationOrchestrator(
-                phaseController, apiRegistry, hookRegistry, serviceRegistry
-            );
+            orchestrator.registerExtensions(Map.of());
         });
     }
     
     @Test
     void testRegistryFreezeBehavior() {
         // Create a simple API capability
-        var descriptor = createDescriptorWithApi("test", "tapestry.test.api");
-        Map<String, TapestryExtensionDescriptor> declaredCapabilities = Map.of("test", descriptor);
+        var descriptor = createDescriptorWithApi("test-extension", "tapestry.mods.test-extension.test");
+        Map<String, TapestryExtensionDescriptor> declaredCapabilities = Map.of("test-extension", descriptor);
         var apiRegistry = new DefaultApiRegistry(phaseController, declaredCapabilities);
         
         // Should be able to register before freeze
         assertDoesNotThrow(() -> {
-            apiRegistry.addFunction("test-extension", "test", args -> null);
+            apiRegistry.addFunction("test-extension", "test_api", args -> null);
         });
         
         // Freeze registry

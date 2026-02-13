@@ -51,6 +51,13 @@ public enum TapestryPhase {
     TS_READY,
     
     /**
+     * Persistence layer is initialized.
+     * Mod state is loaded and ready for runtime access.
+     * This phase is always executed, becomes no-op if unused.
+     */
+    PERSISTENCE_READY,
+    
+    /**
      * Server is live and gameplay begins.
      * Normal mod operation.
      */

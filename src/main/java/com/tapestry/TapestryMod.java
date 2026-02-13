@@ -7,6 +7,7 @@ import com.tapestry.extensions.*;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.persistence.PersistenceService;
 import com.tapestry.players.PlayerService;
 import com.tapestry.scheduler.SchedulerService;
 import com.tapestry.state.ModStateService;
@@ -50,6 +51,7 @@ public class TapestryMod implements ModInitializer {
     private static ConfigService configService;
     private static ModStateService stateService;
     private static PlayersApi playersApi;
+    private static PersistenceService persistenceService;
     
     // Phase 3: Extension validation
     private static ExtensionValidationResult validationResult;
@@ -109,13 +111,40 @@ public class TapestryMod implements ModInitializer {
      * Registers Fabric API hooks for server lifecycle and player events.
      */
     private static void registerFabricHooks() {
-        // Server started hook - initialize PlayerService with server instance
+        // Server started hook - initialize PlayerService and PersistenceService
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            LOGGER.info("Server started - initializing PlayerService");
+            LOGGER.info("Server started - initializing services");
+            
+            // Initialize PlayerService with server instance
             if (playerService != null) {
                 playerService.setServer(server);
                 LOGGER.info("PlayerService initialized with server instance");
             }
+            
+            // Initialize Phase 9 persistence service
+            if (persistenceService == null) {
+                // Determine storage directory based on server type
+                java.nio.file.Path storageDir;
+                if (server.isDedicated()) {
+                    // Server: world-scoped storage - use run directory as base
+                    storageDir = java.nio.file.Paths.get("world").resolve("data").resolve("tapestry");
+                } else {
+                    // Client: instance-scoped storage
+                    storageDir = java.nio.file.Paths.get("config").resolve("tapestry");
+                }
+                
+                PersistenceService.initialize(storageDir);
+                persistenceService = PersistenceService.getInstance();
+                LOGGER.info("PersistenceService initialized with directory: {}", storageDir);
+            }
+            
+            // Advance to PERSISTENCE_READY phase
+            PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
+            LOGGER.info("PERSISTENCE_READY phase completed");
+            
+            // Now advance to RUNTIME
+            PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
+            LOGGER.info("RUNTIME phase completed - Tapestry is ready");
         });
         
         // Server tick hook - for scheduler and other runtime services
@@ -358,6 +387,10 @@ public class TapestryMod implements ModInitializer {
             configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
             stateService = new ModStateService();
             playerService = new PlayerService(null); // Will be updated with server instance later
+            
+            // Initialize Phase 9 persistence service
+            // Note: Storage directory will be determined when server starts
+            persistenceService = null; // Will be initialized in SERVER_STARTED hook
             
             // Update PlayersApi with actual PlayerService
             playersApi.setPlayerService(playerService);

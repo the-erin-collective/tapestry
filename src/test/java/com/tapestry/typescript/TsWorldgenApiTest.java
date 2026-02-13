@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class TsWorldgenApiTest {
     
     private HookRegistry hookRegistry;
+    private TsModRegistry modRegistry;
     private TsWorldgenApi worldgenApi;
     
     @BeforeEach
@@ -23,8 +24,10 @@ public class TsWorldgenApiTest {
         // Reset phase controller for each test
         PhaseController.reset();
         
-        // Advance through phases to TS_READY for worldgen API tests
+        // Advance through phases to TS_READY for worldgen API tests (one at a time)
+        // After reset, we're already at BOOTSTRAP, so start from DISCOVERY
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
@@ -33,7 +36,9 @@ public class TsWorldgenApiTest {
         hookRegistry = new HookRegistry();
         hookRegistry.allowRegistration();
         
-        worldgenApi = new TsWorldgenApi(hookRegistry);
+        modRegistry = new TsModRegistry();
+        
+        worldgenApi = new TsWorldgenApi(hookRegistry, modRegistry);
     }
     
     @Test
