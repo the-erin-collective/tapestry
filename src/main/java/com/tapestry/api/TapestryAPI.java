@@ -4,6 +4,8 @@ import com.tapestry.extensions.TapestryExtensionContext;
 import com.tapestry.extensions.ApiRegistry;
 import com.tapestry.extensions.HookRegistry;
 import com.tapestry.extensions.ServiceRegistry;
+import com.tapestry.extensions.ExtensionRegistrationContext;
+import com.tapestry.extensions.ExtensionRegistrationException;
 import com.tapestry.extensions.TapestryExtensionDescriptor;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
@@ -14,8 +16,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The core Tapestry API surface exposed to TypeScript mods.

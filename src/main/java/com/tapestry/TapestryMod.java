@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Main Tapestry mod implementing Fabric's ModInitializer.
@@ -84,7 +86,9 @@ public class TapestryMod implements ModInitializer {
         // Initialize core components
         api = new TapestryAPI();
         modRegistry = new TsModRegistry();
-        extensionsHookRegistry = new com.tapestry.extensions.DefaultHookRegistry(); // Phase 4 registry
+        extensionsHookRegistry = new com.tapestry.extensions.DefaultHookRegistry(
+            PhaseController.getInstance(), new HashMap<>()
+        ); // Phase 4 registry
         tsHookRegistry = new com.tapestry.hooks.HookRegistry(); // TS handler registry
         tsRuntime = new TypeScriptRuntime();
         modDiscovery = new TsModDiscovery();
@@ -135,14 +139,16 @@ public class TapestryMod implements ModInitializer {
                     var tick = server.getTicks();
                     
                     // Emit player join event
-                    eventBus.emit("playerJoin", com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
-                        "tapestry", 
-                        player.getUuidAsString(), 
-                        player.getName().getString(), 
-                        worldId, 
-                        tick, 
-                        null
-                    ));
+                    eventBus.emit("playerJoin", 
+                        (Map<String, Object>) com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
+                            "tapestry", 
+                            player.getUuidAsString(), 
+                            player.getName().getString(), 
+                            worldId, 
+                            tick, 
+                            null
+                        )
+                    );
                 } catch (Exception e) {
                     LOGGER.error("Error during player join event", e);
                 }
@@ -158,14 +164,16 @@ public class TapestryMod implements ModInitializer {
                     var tick = server.getTicks();
                     
                     // Emit player quit event
-                    eventBus.emit("playerQuit", com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
-                        "tapestry", 
-                        player.getUuidAsString(), 
-                        player.getName().getString(), 
-                        worldId, 
-                        tick, 
-                        null
-                    ));
+                    eventBus.emit("playerQuit", 
+                        (Map<String, Object>) com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
+                            "tapestry", 
+                            player.getUuidAsString(), 
+                            player.getName().getString(), 
+                            worldId, 
+                            tick, 
+                            null
+                        )
+                    );
                 } catch (Exception e) {
                     LOGGER.error("Error during player quit event", e);
                 }
@@ -339,7 +347,7 @@ public class TapestryMod implements ModInitializer {
     /**
      * Initializes Phase 6 runtime services and advances to RUNTIME phase.
      */
-    private void initializeRuntimeServices() {
+    private static void initializeRuntimeServices() {
         LOGGER.info("=== RUNTIME PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
         

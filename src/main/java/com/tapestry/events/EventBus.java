@@ -51,7 +51,7 @@ public class EventBus {
         }
         
         EventHandler handler = new EventHandler(
-            callback, modId, source, nextRegistrationOrder.incrementAndGet()
+            callback, modId, source, (int) nextRegistrationOrder.incrementAndGet()
         );
         
         handlers.computeIfAbsent(eventName, k -> new ArrayList<>()).add(handler);

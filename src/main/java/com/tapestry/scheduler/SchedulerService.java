@@ -53,7 +53,7 @@ public class SchedulerService {
         
         ScheduledTask task = new ScheduledTask(
             handle, callback, modId, targetTick, false, 
-            nextRegistrationOrder.incrementAndGet()
+            (int) nextRegistrationOrder.incrementAndGet()
         );
         
         tickWheel.computeIfAbsent(targetTick, k -> new ArrayList<>()).add(task);
@@ -88,7 +88,7 @@ public class SchedulerService {
         
         ScheduledTask task = new ScheduledTask(
             handle, callback, modId, targetTick, true, 
-            nextRegistrationOrder.incrementAndGet()
+            (int) nextRegistrationOrder.incrementAndGet()
         );
         task.setInterval(interval);
         

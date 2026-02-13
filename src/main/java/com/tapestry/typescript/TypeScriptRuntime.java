@@ -525,34 +525,6 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Evaluates a JavaScript expression in the runtime context.
-    public static boolean hasModDefinedInSource(String source) {
-        synchronized (sourcesWithModDefine) {
-            return sourcesWithModDefine.contains(source);
-        }
-    }
-    
-    /**
-     * Marks that a mod was defined in the given source.
-     * 
-     * @param source the source where the mod was defined
-     */
-    public static void markModDefinedInSource(String source) {
-        synchronized (sourcesWithModDefine) {
-            sourcesWithModDefine.add(source);
-        }
-    }
-    
-    /**
-     * Clears source tracking (for fresh runtime initialization).
-     */
-    public static void clearSourceTracking() {
-        synchronized (sourcesWithModDefine) {
-            sourcesWithModDefine.clear();
-        }
-    }
-    
-    /**
      * Gets the JavaScript context (for testing purposes).
      * 
      * @return the JavaScript context
@@ -562,29 +534,23 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Checks if the runtime is initialized.
+     * Checks if runtime is initialized.
      * 
-     * @return true if the runtime is initialized
+     * @return true if runtime is initialized
      */
     public boolean isInitialized() {
         return initialized;
     }
     
     /**
-     * Closes the runtime and releases resources.
-     * Should be called during shutdown.
+     * Closes runtime and releases resources.
      */
     public void close() {
         if (jsContext != null) {
-            try {
-                jsContext.close();
-                LOGGER.info("TypeScript runtime closed");
-            } catch (Exception e) {
-                LOGGER.warn("Error closing TypeScript runtime", e);
-            } finally {
-                jsContext = null;
-                initialized = false;
-            }
+            jsContext.close();
+            jsContext = null;
         }
+        initialized = false;
+        LOGGER.info("TypeScript runtime closed");
     }
 }
