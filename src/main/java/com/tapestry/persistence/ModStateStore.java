@@ -19,7 +19,7 @@ public class ModStateStore {
     
     private final String modId;
     private final Map<String, Object> state;
-    private final PersistenceService persistenceService;
+    private final PersistenceServiceInterface persistenceService;
     
     /**
      * Creates a new mod state store.
@@ -28,7 +28,7 @@ public class ModStateStore {
      * @param state the in-memory state map for this mod
      * @param persistenceService the persistence service for save operations
      */
-    public ModStateStore(String modId, Map<String, Object> state, PersistenceService persistenceService) {
+    public ModStateStore(String modId, Map<String, Object> state, PersistenceServiceInterface persistenceService) {
         this.modId = modId;
         this.state = state;
         this.persistenceService = persistenceService;
@@ -136,7 +136,7 @@ public class ModStateStore {
      * during shutdown, but mods can call it explicitly if needed.
      */
     public void save() {
-        persistenceService.saveModState(modId);
+        persistenceService.saveModState(modId, state);
         LOGGER.debug("Mod {} triggered manual save", modId);
     }
     
@@ -175,5 +175,14 @@ public class ModStateStore {
         
         // Disallowed types
         return false;
+    }
+    
+    /**
+     * Gets all key-value pairs in this store.
+     * 
+     * @return a copy of all stored data
+     */
+    public Map<String, Object> getAll() {
+        return new ConcurrentHashMap<>(state);
     }
 }

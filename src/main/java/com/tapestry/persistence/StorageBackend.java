@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class StorageBackend {
     private static final Logger LOGGER = LoggerFactory.getLogger(StorageBackend.class);
+    private static final int CURRENT_SCHEMA_VERSION = 1;
     
     private final Gson gson;
     private final Path storageDirectory;
@@ -67,20 +68,32 @@ public class StorageBackend {
             JsonObject root = gson.fromJson(reader, JsonObject.class);
             
             if (root == null) {
-                LOGGER.warn("Empty persistence file for mod: {}", modId);
+                LOGGER.warn("Empty or invalid JSON file for mod: {}", modId);
                 return new ConcurrentHashMap<>();
             }
             
-            // Extract data section, ignoring __version field for now
-            JsonElement dataElement = root.get("data");
-            if (dataElement == null || !dataElement.isJsonObject()) {
-                LOGGER.warn("Invalid persistence file format for mod: {} - missing data section", modId);
+            // Check schema version
+            if (!root.has("schemaVersion")) {
+                LOGGER.warn("Legacy persistence file for mod: {} (no schema version)", modId);
+                // Legacy format - treat entire root as data
+                return convertLegacyFormat(root);
+            }
+            
+            int schemaVersion = root.get("schemaVersion").getAsInt();
+            if (schemaVersion != CURRENT_SCHEMA_VERSION) {
+                throw new IllegalStateException(
+                    String.format("Unsupported schema version %d for mod %s (expected %d)", 
+                        schemaVersion, modId, CURRENT_SCHEMA_VERSION)
+                );
+            }
+            
+            JsonObject data = root.getAsJsonObject("data");
+            if (data == null) {
+                LOGGER.warn("Invalid persistence format for mod: {} (missing data field)", modId);
                 return new ConcurrentHashMap<>();
             }
             
-            Map<String, Object> data = gson.fromJson(dataElement, Map.class);
-            return data != null ? new ConcurrentHashMap<>(data) : new ConcurrentHashMap<>();
-            
+            return convertJsonToMap(data);
         } catch (JsonSyntaxException e) {
             String errorMsg = String.format("Invalid JSON in persistence file for mod '%s': %s", modId, e.getMessage());
             LOGGER.error(errorMsg);
@@ -109,7 +122,7 @@ public class StorageBackend {
         
         // Create the JSON structure with version field
         JsonObject root = new JsonObject();
-        root.addProperty("__version", 1); // Reserved for future migrations
+        root.addProperty("schemaVersion", CURRENT_SCHEMA_VERSION);
         root.add("data", gson.toJsonTree(state));
         
         try (Writer writer = Files.newBufferedWriter(filePath)) {
@@ -164,5 +177,59 @@ public class StorageBackend {
                 throw new IllegalStateException(errorMsg, e);
             }
         }
+    }
+    
+    /**
+     * Converts legacy format (no schema version) to map.
+     * Treats the entire root object as data.
+     * 
+     * @param root the legacy JSON root
+     * @return converted map
+     */
+    private Map<String, Object> convertLegacyFormat(JsonObject root) {
+        LOGGER.warn("Converting legacy persistence format to new schema");
+        return convertJsonToMap(root);
+    }
+    
+    /**
+     * Converts a JsonObject to a Map<String, Object>.
+     * 
+     * @param jsonObject the JSON object to convert
+     * @return the converted map
+     */
+    private Map<String, Object> convertJsonToMap(JsonObject jsonObject) {
+        Map<String, Object> result = new ConcurrentHashMap<>();
+        for (Map.Entry<String, com.google.gson.JsonElement> entry : jsonObject.entrySet()) {
+            result.put(entry.getKey(), convertJsonElement(entry.getValue()));
+        }
+        return result;
+    }
+    
+    /**
+     * Converts a JsonElement to its appropriate Java type.
+     * 
+     * @param element the JSON element to convert
+     * @return the converted Java object
+     */
+    private Object convertJsonElement(com.google.gson.JsonElement element) {
+        if (element.isJsonNull()) {
+            return null;
+        } else if (element.isJsonPrimitive()) {
+            com.google.gson.JsonPrimitive primitive = element.getAsJsonPrimitive();
+            if (primitive.isBoolean()) {
+                return primitive.getAsBoolean();
+            } else if (primitive.isNumber()) {
+                return primitive.getAsNumber();
+            } else {
+                return primitive.getAsString();
+            }
+        } else if (element.isJsonArray()) {
+            // Convert arrays to lists
+            return gson.fromJson(element, Object.class);
+        } else if (element.isJsonObject()) {
+            // Convert nested objects to maps
+            return convertJsonToMap(element.getAsJsonObject());
+        }
+        return null;
     }
 }

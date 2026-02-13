@@ -29,6 +29,15 @@ public class PersistenceServiceTest {
         // Reset singleton instance for clean testing
         resetPersistenceServiceSingleton();
         
+        // Advance through all phases to PERSISTENCE_READY
+        PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
+        PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
+        PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
+        
         // Create temporary directory for testing
         try {
             tempDir = Files.createTempDirectory("tapestry-test");

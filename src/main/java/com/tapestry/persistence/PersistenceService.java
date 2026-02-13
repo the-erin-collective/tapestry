@@ -13,12 +13,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Core persistence service that manages mod state storage and lifecycle.
+ * Core persistence service for managing mod state storage and lifecycle.
  * 
- * This service handles loading state at startup, saving at shutdown,
- * and providing per-mod state stores during runtime.
+ * This service provides the main persistence functionality for Tapestry mods,
+ * including loading, saving, and managing mod state stores.
+ * 
+ * Note: This class is deprecated in favor of ClientPersistenceService and ServerPersistenceService.
+ * It remains for backward compatibility during the transition.
  */
-public class PersistenceService {
+@Deprecated
+public class PersistenceService implements PersistenceServiceInterface {
     private static final Logger LOGGER = LoggerFactory.getLogger(PersistenceService.class);
     private static PersistenceService instance;
     
@@ -40,11 +44,16 @@ public class PersistenceService {
     }
     
     /**
-     * Initializes the persistence service.
+     * Initializes the persistence service with the given storage directory.
+     * Must be called during PERSISTENCE_READY phase.
      * 
      * @param storageDirectory the directory for persistence files
+     * @throws IllegalStateException if not in PERSISTENCE_READY phase
      */
     public static void initialize(Path storageDirectory) {
+        PhaseController phaseController = PhaseController.getInstance();
+        phaseController.requireAtLeast(TapestryPhase.PERSISTENCE_READY);
+        
         if (instance != null) {
             LOGGER.warn("PersistenceService already initialized");
             return;
@@ -130,6 +139,19 @@ public class PersistenceService {
             storageBackend.saveModState(modId, state);
             LOGGER.debug("Saved state for mod: {}", modId);
         }
+    }
+    
+    /**
+     * Saves all mod states to disk.
+     * This is called during server shutdown.
+     */
+    public void saveAll() {
+        if (!initialized) {
+            LOGGER.warn("Attempted to save uninitialized PersistenceService");
+            return;
+        }
+        
+        saveAllModStates();
     }
     
     /**
@@ -227,5 +249,16 @@ public class PersistenceService {
         modStores.remove(modId);
         storageBackend.deleteModState(modId);
         LOGGER.info("Deleted all persistence data for mod: {}", modId);
+    }
+    
+    /**
+     * Saves a specific mod's state to disk.
+     * 
+     * @param modId the mod identifier
+     * @param state the state data to save
+     */
+    public void saveModState(String modId, Map<String, Object> state) {
+        storageBackend.saveModState(modId, state);
+        LOGGER.debug("Saved state for mod: {}", modId);
     }
 }

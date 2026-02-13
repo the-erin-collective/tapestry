@@ -7,7 +7,9 @@ import com.tapestry.extensions.*;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
-import com.tapestry.persistence.PersistenceService;
+import com.tapestry.persistence.ClientPersistenceService;
+import com.tapestry.persistence.PersistenceServiceInterface;
+import com.tapestry.persistence.ServerPersistenceService;
 import com.tapestry.players.PlayerService;
 import com.tapestry.scheduler.SchedulerService;
 import com.tapestry.state.ModStateService;
@@ -51,7 +53,7 @@ public class TapestryMod implements ModInitializer {
     private static ConfigService configService;
     private static ModStateService stateService;
     private static PlayersApi playersApi;
-    private static PersistenceService persistenceService;
+    private static PersistenceServiceInterface persistenceService;
     
     // Phase 3: Extension validation
     private static ExtensionValidationResult validationResult;
@@ -123,19 +125,19 @@ public class TapestryMod implements ModInitializer {
             
             // Initialize Phase 9 persistence service
             if (persistenceService == null) {
-                // Determine storage directory based on server type
-                java.nio.file.Path storageDir;
                 if (server.isDedicated()) {
-                    // Server: world-scoped storage - use run directory as base
-                    storageDir = java.nio.file.Paths.get("world").resolve("data").resolve("tapestry");
+                    // Server: world-scoped storage
+                    java.nio.file.Path worldDir = java.nio.file.Paths.get("world");
+                    ServerPersistenceService.initialize(worldDir);
+                    persistenceService = ServerPersistenceService.getInstance();
+                    LOGGER.info("ServerPersistenceService initialized for dedicated server");
                 } else {
                     // Client: instance-scoped storage
-                    storageDir = java.nio.file.Paths.get("config").resolve("tapestry");
+                    java.nio.file.Path gameDir = java.nio.file.Paths.get(".");
+                    ClientPersistenceService.initialize(gameDir);
+                    persistenceService = ClientPersistenceService.getInstance();
+                    LOGGER.info("ClientPersistenceService initialized for integrated server");
                 }
-                
-                PersistenceService.initialize(storageDir);
-                persistenceService = PersistenceService.getInstance();
-                LOGGER.info("PersistenceService initialized with directory: {}", storageDir);
             }
             
             // Advance to PERSISTENCE_READY phase
