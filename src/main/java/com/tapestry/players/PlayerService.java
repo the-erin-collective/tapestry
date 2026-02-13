@@ -44,12 +44,26 @@ public class PlayerService {
     }
     
     /**
+     * Guard method to ensure server is available.
+     * Fails fast with clear error message if server is not ready.
+     * 
+     * @return the server instance
+     * @throws IllegalStateException if server is not available
+     */
+    private MinecraftServer requireServer() {
+        if (server == null) {
+            throw new IllegalStateException("PlayerService not ready: server not available yet");
+        }
+        return server;
+    }
+    
+    /**
      * Gets the Minecraft server instance.
      * 
      * @return the server instance
      */
     public MinecraftServer getServer() {
-        return server;
+        return requireServer();
     }
     
     /**
@@ -67,7 +81,7 @@ public class PlayerService {
      * @return array of player snapshots
      */
     public Object[] listPlayers() {
-        PlayerManager pm = server.getPlayerManager();
+        PlayerManager pm = requireServer().getPlayerManager();
         Collection<ServerPlayerEntity> players = pm.getPlayerList();
         
         return players.stream()
@@ -84,7 +98,7 @@ public class PlayerService {
     public Object getPlayer(String uuidString) {
         try {
             UUID uuid = UUID.fromString(uuidString);
-            PlayerManager pm = server.getPlayerManager();
+            PlayerManager pm = requireServer().getPlayerManager();
             ServerPlayerEntity player = pm.getPlayer(uuid);
             
             if (player == null) {
@@ -104,7 +118,7 @@ public class PlayerService {
      * @return player snapshot or null if not found
      */
     public Object findPlayerByName(String name) {
-        PlayerManager pm = server.getPlayerManager();
+        PlayerManager pm = requireServer().getPlayerManager();
         ServerPlayerEntity player = pm.getPlayer(name);
         
         if (player == null) {
@@ -295,7 +309,7 @@ public class PlayerService {
     private ServerPlayerEntity getPlayerEntity(String uuidString) {
         try {
             UUID uuid = UUID.fromString(uuidString);
-            PlayerManager pm = server.getPlayerManager();
+            PlayerManager pm = requireServer().getPlayerManager();
             ServerPlayerEntity player = pm.getPlayer(uuid);
             
             if (player == null) {
