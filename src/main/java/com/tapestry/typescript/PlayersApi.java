@@ -6,6 +6,7 @@ import com.tapestry.players.PlayerService;
 import com.tapestry.typescript.TypeScriptRuntime;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.graalvm.polyglot.proxy.ProxyObject;
+import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +21,7 @@ public class PlayersApi {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(PlayersApi.class);
     
-    private final PlayerService playerService;
+    private PlayerService playerService;
     
     public PlayersApi(PlayerService playerService) {
         this.playerService = playerService;
@@ -203,20 +204,31 @@ public class PlayersApi {
             int fadeIn = 10, stay = 40, fadeOut = 10;
             
             if (args.length == 2) {
-                // Options object form
-                Map<String, Object> options = (Map<String, Object>) args[1];
-                title = (String) options.get("title");
-                subtitle = (String) options.get("subtitle");
-                if (options.containsKey("fadeIn")) fadeIn = ((Number) options.get("fadeIn")).intValue();
-                if (options.containsKey("stay")) stay = ((Number) options.get("stay")).intValue();
-                if (options.containsKey("fadeOut")) fadeOut = ((Number) options.get("fadeOut")).intValue();
+                // Options object form - handle Graal Value
+                Value opts = args[1];
+                if (opts == null || !opts.hasMembers()) {
+                    throw new IllegalArgumentException("Options cannot be null and must be an object");
+                }
+                
+                title = opts.hasMember("title") ? opts.getMember("title").asString() : null;
+                subtitle = opts.hasMember("subtitle") ? opts.getMember("subtitle").asString() : null;
+                
+                if (opts.hasMember("fadeIn")) {
+                    fadeIn = opts.getMember("fadeIn").asInt();
+                }
+                if (opts.hasMember("stay")) {
+                    stay = opts.getMember("stay").asInt();
+                }
+                if (opts.hasMember("fadeOut")) {
+                    fadeOut = opts.getMember("fadeOut").asInt();
+                }
             } else {
                 // Individual arguments form
                 title = args[1].asString();
                 subtitle = args[2].asString();
-                fadeIn = ((Number) args[3]).intValue();
-                stay = ((Number) args[4]).intValue();
-                fadeOut = ((Number) args[5]).intValue();
+                fadeIn = args[3].isNumber() ? args[3].asInt() : 10;
+                stay = args[4].isNumber() ? args[4].asInt() : 40;
+                fadeOut = args[5].isNumber() ? args[5].asInt() : 10;
             }
             
             if (title == null) {
@@ -316,18 +328,17 @@ public class PlayersApi {
                 throw new IllegalArgumentException("UUID must be a non-empty string");
             }
             
-            Map<String, Object> options = (Map<String, Object>) args[1];
-            if (options == null) {
-                throw new IllegalArgumentException("Options cannot be null");
+            Value opts = args[1];
+            if (opts == null || !opts.hasMembers()) {
+                throw new IllegalArgumentException("Options cannot be null and must be an object");
             }
             
-            Number maxDistanceNum = (Number) options.get("maxDistance");
-            if (maxDistanceNum == null) {
+            if (!opts.hasMember("maxDistance")) {
                 throw new IllegalArgumentException("maxDistance is required in options");
             }
             
-            double maxDistance = maxDistanceNum.doubleValue();
-            Boolean includeFluids = (Boolean) options.getOrDefault("includeFluids", false);
+            double maxDistance = opts.getMember("maxDistance").asDouble();
+            boolean includeFluids = opts.hasMember("includeFluids") && opts.getMember("includeFluids").asBoolean();
             
             try {
                 return playerService.raycastBlock(uuid, maxDistance, includeFluids);

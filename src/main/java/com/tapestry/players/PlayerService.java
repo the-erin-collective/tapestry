@@ -37,7 +37,7 @@ public class PlayerService {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(PlayerService.class);
     
-    private final MinecraftServer server;
+    private MinecraftServer server;
     
     public PlayerService(MinecraftServer server) {
         this.server = server;

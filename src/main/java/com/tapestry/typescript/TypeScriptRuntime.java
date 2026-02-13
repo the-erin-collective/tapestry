@@ -48,39 +48,33 @@ public class TypeScriptRuntime {
      * Thread-local execution context for tracking current mod and execution mode.
      */
     private static final ThreadLocal<ExecutionContext> currentContext = ThreadLocal.withInitial(() -> 
-        new ExecutionContext(null, ExecutionContextMode.NONE)
+        new ExecutionContext(null, ExecutionContextMode.NONE, null)
     );
 
     /**
      * Represents the current execution context.
      */
-    private static class ExecutionContext {
-        private String modId;
-        private ExecutionContextMode mode;
-        private String source;
+    public static class ExecutionContext {
+        private final String modId;
+        private final ExecutionContextMode mode;
+        private final String source;
         
-        ExecutionContext(String modId, ExecutionContextMode mode) {
+        public ExecutionContext(String modId, ExecutionContextMode mode, String source) {
             this.modId = modId;
             this.mode = mode;
+            this.source = source;
         }
         
-        String modId() { return modId; }
-        ExecutionContextMode mode() { return mode; }
-        String source() { return source; }
-        
-        void setModId(String modId) { this.modId = modId; }
-        void setMode(ExecutionContextMode mode) { this.mode = mode; }
-        void setSource(String source) { this.source = source; }
+        public String modId() { return modId; }
+        public ExecutionContextMode mode() { return mode; }
+        public String source() { return source; }
     }
 
     /**
      * Sets the current execution context.
      */
     public static void setExecutionContext(String modId, ExecutionContextMode mode, String source) {
-        ExecutionContext context = currentContext.get();
-        context.setModId(modId);
-        context.setMode(mode);
-        context.setSource(source);
+        currentContext.set(new ExecutionContext(modId, mode, source));
     }
 
     /**
@@ -94,10 +88,76 @@ public class TypeScriptRuntime {
      * Clears the execution context.
      */
     public static void clearExecutionContext() {
-        ExecutionContext context = currentContext.get();
-        context.setModId(null);
-        context.setMode(ExecutionContextMode.NONE);
-        context.setSource(null);
+        currentContext.set(new ExecutionContext(null, ExecutionContextMode.NONE, null));
+    }
+    
+    /**
+     * Gets the current mod ID from the execution context.
+     * 
+     * @return the current mod ID or null if not in a mod context
+     */
+    public static String getCurrentModId() {
+        return getCurrentContext().modId();
+    }
+    
+    /**
+     * Evaluates a JavaScript expression in the runtime context.
+     * 
+     * @param expression JavaScript expression to evaluate
+     * @return result of the expression
+     */
+    public static Object evalExpression(String expression) {
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            return jsContext.eval("js", expression);
+        } catch (Exception e) {
+            LOGGER.error("Failed to evaluate expression: {}", expression, e);
+            throw new RuntimeException("Expression evaluation failed: " + expression, e);
+        }
+    }
+    
+    /**
+     * Gets the current source file from the execution context.
+     * 
+     * @return the current source file or null if not in a mod context
+     */
+    public static String getCurrentSource() {
+        return getCurrentContext().source();
+    }
+    
+    /**
+     * Checks if a mod has been defined in the given source.
+     * 
+     * @param source the source file
+     * @return true if a mod has been defined, false otherwise
+     */
+    public static boolean hasModDefinedInSource(String source) {
+        synchronized (sourcesWithModDefine) {
+            return sourcesWithModDefine.contains(source);
+        }
+    }
+    
+    /**
+     * Marks that a mod was defined in the given source.
+     * 
+     * @param source the source where the mod was defined
+     */
+    public static void markModDefinedInSource(String source) {
+        synchronized (sourcesWithModDefine) {
+            sourcesWithModDefine.add(source);
+        }
+    }
+    
+    /**
+     * Clears source tracking (for fresh runtime initialization).
+     */
+    public static void clearSourceTracking() {
+        synchronized (sourcesWithModDefine) {
+            sourcesWithModDefine.clear();
+        }
     }
     
     // Track sources that have already defined a mod (one-define-per-file rule)
@@ -233,8 +293,13 @@ public class TypeScriptRuntime {
         // Merge extension APIs into the tapestry object
         if (apiTree != null) {
             // Copy all members from the extension API tree
-            for (String key : apiTree.getMemberKeys()) {
-                tapestry.put(key, apiTree.getMember(key));
+            Object keys = apiTree.getMemberKeys();
+            if (keys instanceof Object[]) {
+                Object[] keyArray = (Object[]) keys;
+                for (Object keyObj : keyArray) {
+                    String key = keyObj.toString();
+                    tapestry.put(key, apiTree.getMember(key));
+                }
             }
         }
         
@@ -245,6 +310,26 @@ public class TypeScriptRuntime {
         
         return bindings;
     }
+    
+    /**
+     * Extends the tapestry object for TS_READY phase with hook APIs.
+     * 
+     * @param hookRegistry the hook registry for hook registration
+     * @param modRegistry the mod registry for source information
+     */
+    private void extendTapestryObjectForReady(HookRegistry hookRegistry, TsModRegistry modRegistry) {
+        // Get the existing tapestry object
+        Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+        
+        // Create hook API instance for TS_READY phase (hook registration)
+        TsEventsApi eventsApi = new TsEventsApi(null, modRegistry); // No EventBus during TS_READY
+        
+        // Add events namespace
+        tapestryValue.putMember("events", eventsApi.createNamespace());
+        
+        LOGGER.debug("Extended tapestry object for TS_READY phase with hook APIs");
+    }
+    
     /**
      * Extends the tapestry object for RUNTIME phase with Phase 6 APIs.
      * This should be called when transitioning to RUNTIME phase.
@@ -280,7 +365,7 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Extends the tapestry object for RUNTIME phase using proper GraalVM proxies.
+     * Extends the tapestry object for RUNTIME phase with Phase 6 APIs.
      * 
      * @param schedulerService the scheduler service
      * @param eventBus the event bus
@@ -367,12 +452,8 @@ public class TypeScriptRuntime {
         }
         
         // Set current mod ID and source for context tracking
+        String source = "unknown"; // Default fallback
         setExecutionContext(modId, ExecutionContextMode.ON_LOAD, source);
-        
-        // Try to get source information from the mod registry
-        String source = "unknown";
-        // Note: This would require access to the mod registry, which we don't have here
-        // For now, we'll rely on the hook API to get source info from other means
         
         try {
             // Get the JS tapestry object to pass to onLoad

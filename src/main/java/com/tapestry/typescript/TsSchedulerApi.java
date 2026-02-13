@@ -44,7 +44,7 @@ public class TsSchedulerApi {
             }
             
             Value callback = args[0];
-            Number delay = args[1];
+            Number delay = args[1].isNumber() ? args[1].asDouble() : 0;
             
             if (callback == null || !callback.canExecute()) {
                 throw new IllegalArgumentException("First argument must be an executable function");
@@ -69,7 +69,7 @@ public class TsSchedulerApi {
             }
             
             Value callback = args[0];
-            Number interval = args[1];
+            Number interval = args[1].isNumber() ? args[1].asDouble() : 0;
             
             if (callback == null || !callback.canExecute()) {
                 throw new IllegalArgumentException("First argument must be an executable function");

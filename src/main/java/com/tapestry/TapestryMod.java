@@ -16,6 +16,10 @@ import com.tapestry.typescript.TsModRegistry;
 import com.tapestry.typescript.TypeScriptRuntime;
 import com.tapestry.typescript.PlayersApi;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,7 +95,84 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("=== DISCOVERY PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
         
+        // Register Fabric server lifecycle hooks
+        registerFabricHooks();
+        
         LOGGER.info("Framework bootstrap complete");
+    }
+    
+    /**
+     * Registers Fabric API hooks for server lifecycle and player events.
+     */
+    private static void registerFabricHooks() {
+        // Server started hook - initialize PlayerService with server instance
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            LOGGER.info("Server started - initializing PlayerService");
+            if (playerService != null) {
+                playerService.setServer(server);
+                LOGGER.info("PlayerService initialized with server instance");
+            }
+        });
+        
+        // Server tick hook - for scheduler and other runtime services
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (schedulerService != null) {
+                try {
+                    schedulerService.tick(server.getTicks());
+                } catch (Exception e) {
+                    LOGGER.error("Error during scheduler tick", e);
+                }
+            }
+        });
+        
+        // Player join/quit hooks - emit events to EventBus
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            if (eventBus != null) {
+                try {
+                    // Create player event context using RuntimeContextFactory
+                    var player = handler.getPlayer();
+                    var worldId = player.getWorld().getRegistryKey().getValue().toString();
+                    var tick = server.getTicks();
+                    
+                    // Emit player join event
+                    eventBus.emit("playerJoin", com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
+                        "tapestry", 
+                        player.getUuidAsString(), 
+                        player.getName().getString(), 
+                        worldId, 
+                        tick, 
+                        null
+                    ));
+                } catch (Exception e) {
+                    LOGGER.error("Error during player join event", e);
+                }
+            }
+        });
+        
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            if (eventBus != null) {
+                try {
+                    // Create player event context using RuntimeContextFactory
+                    var player = handler.getPlayer();
+                    var worldId = player.getWorld().getRegistryKey().getValue().toString();
+                    var tick = server.getTicks();
+                    
+                    // Emit player quit event
+                    eventBus.emit("playerQuit", com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
+                        "tapestry", 
+                        player.getUuidAsString(), 
+                        player.getName().getString(), 
+                        worldId, 
+                        tick, 
+                        null
+                    ));
+                } catch (Exception e) {
+                    LOGGER.error("Error during player quit event", e);
+                }
+            }
+        });
+        
+        LOGGER.info("Fabric hooks registered");
     }
     
     /**
@@ -388,23 +469,26 @@ public class TapestryMod implements ModInitializer {
             // Create PlayersApi instance
             playersApi = new PlayersApi(null); // Will be updated later with actual PlayerService
             
+            // Create namespace once to avoid creating multiple instances
+            org.graalvm.polyglot.proxy.ProxyObject playersNs = playersApi.createNamespace();
+            
             // Register player identity & discovery APIs
-            apiRegistry.addFunction("players.list", playersApi.createNamespace().getMember("list"));
-            apiRegistry.addFunction("players.get", playersApi.createNamespace().getMember("get"));
-            apiRegistry.addFunction("players.findByName", playersApi.createNamespace().getMember("findByName"));
+            apiRegistry.addFunction("tapestry", "players.list", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("list"));
+            apiRegistry.addFunction("tapestry", "players.get", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("get"));
+            apiRegistry.addFunction("tapestry", "players.findByName", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("findByName"));
             
             // Register player messaging APIs
-            apiRegistry.addFunction("players.sendChat", playersApi.createNamespace().getMember("sendChat"));
-            apiRegistry.addFunction("players.sendActionBar", playersApi.createNamespace().getMember("sendActionBar"));
-            apiRegistry.addFunction("players.sendTitle", playersApi.createNamespace().getMember("sendTitle"));
+            apiRegistry.addFunction("tapestry", "players.sendChat", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("sendChat"));
+            apiRegistry.addFunction("tapestry", "players.sendActionBar", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("sendActionBar"));
+            apiRegistry.addFunction("tapestry", "players.sendTitle", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("sendTitle"));
             
             // Register player query APIs
-            apiRegistry.addFunction("players.getPosition", playersApi.createNamespace().getMember("getPosition"));
-            apiRegistry.addFunction("players.getLook", playersApi.createNamespace().getMember("getLook"));
-            apiRegistry.addFunction("players.getGameMode", playersApi.createNamespace().getMember("getGameMode"));
+            apiRegistry.addFunction("tapestry", "players.getPosition", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("getPosition"));
+            apiRegistry.addFunction("tapestry", "players.getLook", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("getLook"));
+            apiRegistry.addFunction("tapestry", "players.getGameMode", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("getGameMode"));
             
             // Register raycasting API
-            apiRegistry.addFunction("players.raycastBlock", playersApi.createNamespace().getMember("raycastBlock"));
+            apiRegistry.addFunction("tapestry", "players.raycastBlock", (org.graalvm.polyglot.proxy.ProxyExecutable) playersNs.getMember("raycastBlock"));
             
             LOGGER.info("Core Phase 7 player capabilities registered");
         } catch (Exception e) {
