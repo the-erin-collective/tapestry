@@ -61,7 +61,14 @@ public enum TapestryPhase {
      * Server is live and gameplay begins.
      * Normal mod operation.
      */
-    RUNTIME;
+    RUNTIME,
+    
+    /**
+     * Client presentation layer is initialized.
+     * Overlay registration and rendering is allowed.
+     * This phase is client-side only.
+     */
+    CLIENT_PRESENTATION_READY;
     
     /**
      * Returns true if this phase comes after the given phase.

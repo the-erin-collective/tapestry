@@ -58,3 +58,6 @@ Desktop.ini
 # Fabric
 run/
 /gradle-temp
+
+# Downloaded libraries (build-time artifacts)
+src/main/resources/tapestry/mikel/mikel.js

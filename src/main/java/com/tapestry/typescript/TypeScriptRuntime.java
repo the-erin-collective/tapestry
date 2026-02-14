@@ -10,6 +10,8 @@ import com.tapestry.persistence.ModStateStore;
 import com.tapestry.persistence.PersistenceApi;
 import com.tapestry.scheduler.SchedulerService;
 import com.tapestry.state.ModStateService;
+import com.tapestry.overlay.OverlayRegistry;
+import com.tapestry.overlay.OverlayApi;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;
@@ -20,9 +22,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashSet;
+import java.io.InputStream;
+import java.io.IOException;
 
 /**
  * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
@@ -578,6 +582,20 @@ public class TypeScriptRuntime {
                 }
             }
             
+            if (phase == TapestryPhase.CLIENT_PRESENTATION_READY || phase == TapestryPhase.RUNTIME) {
+                // Check that client.overlay.register exists (only available from CLIENT_PRESENTATION_READY onwards)
+                Value overlayRegister = jsContext.eval("js", "typeof tapestry.client.overlay.register");
+                if (!overlayRegister.asString().equals("function")) {
+                    throw new RuntimeException("tapestry.client.overlay.register is not a function");
+                }
+                
+                // Check that tapestry.utils.mikel exists (only available from CLIENT_PRESENTATION_READY onwards)
+                Value mikel = jsContext.eval("js", "typeof tapestry.utils.mikel");
+                if (!mikel.asString().equals("function")) {
+                    throw new RuntimeException("tapestry.utils.mikel is not a function");
+                }
+            }
+            
             LOGGER.debug("Sanity check passed for phase: {}", phase);
             
         } catch (Exception e) {
@@ -602,6 +620,100 @@ public class TypeScriptRuntime {
      */
     public boolean isInitialized() {
         return initialized;
+    }
+    
+    /**
+     * Extends the tapestry object for CLIENT_PRESENTATION_READY phase.
+     * This should be called when transitioning to CLIENT_PRESENTATION_READY phase.
+     */
+    public void extendForClientPresentation() {
+        PhaseController.getInstance().requirePhase(TapestryPhase.CLIENT_PRESENTATION_READY);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            // Load Mikel templating library from embedded resources
+            loadMikelLibrary();
+            
+            // Initialize overlay system
+            OverlayRegistry overlayRegistry = OverlayRegistry.getInstance();
+            OverlayApi overlayApi = new OverlayApi(overlayRegistry);
+            
+            // Get the existing tapestry object
+            Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+            
+            // Create client namespace if it doesn't exist
+            if (!tapestryValue.hasMember("client")) {
+                Map<String, Object> client = new HashMap<>();
+                tapestryValue.putMember("client", ProxyObject.fromMap(client));
+            }
+            
+            // Add overlay API to client namespace
+            Value clientValue = tapestryValue.getMember("client");
+            clientValue.putMember("overlay", overlayApi.createNamespace());
+            
+            // Initialize overlay renderer
+            com.tapestry.overlay.OverlayRenderer.getInstance(overlayRegistry);
+            
+            // Run CLIENT_PRESENTATION_READY phase sanity check
+            runSanityCheckForPhase(TapestryPhase.CLIENT_PRESENTATION_READY);
+            
+            LOGGER.info("TypeScript runtime extended for CLIENT_PRESENTATION_READY phase");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for CLIENT_PRESENTATION_READY", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for CLIENT_PRESENTATION_READY", e);
+        }
+    }
+    
+    /**
+     * Loads the Mikel templating library from embedded resources.
+     * 
+     * @throws RuntimeException if loading fails
+     */
+    private void loadMikelLibrary() {
+        final String MIKEL_RESOURCE_PATH = "/tapestry/mikel/mikel.js";
+        final String MIKEL_VERSION = "v0.32.0";
+        
+        try {
+            LOGGER.info("Loading Mikel templating library version {} from embedded resources...", MIKEL_VERSION);
+            
+            // Load the library from embedded resources
+            String mikelSource;
+            try (InputStream inputStream = TypeScriptRuntime.class.getResourceAsStream(MIKEL_RESOURCE_PATH)) {
+                if (inputStream == null) {
+                    throw new IOException("Mikel library not found at resource path: " + MIKEL_RESOURCE_PATH);
+                }
+                mikelSource = new String(inputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+            
+            // Load the library into the JavaScript context
+            evaluateScript(mikelSource, "mikel");
+            
+            // Expose the mikel function as tapestry.utils.mikel
+            String setupScript = """
+                // Create tapestry.utils namespace if it doesn't exist
+                if (typeof tapestry.utils === 'undefined') {
+                    tapestry.utils = {};
+                }
+                
+                // Expose mikel function
+                tapestry.utils.mikel = mikel;
+                
+                // Log that mikel is available
+                console.log('Mikel templating library is now available as tapestry.utils.mikel');
+                """;
+            
+            evaluateScript(setupScript, "mikel-setup");
+            
+            LOGGER.info("Successfully loaded Mikel library version {}", MIKEL_VERSION);
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to load Mikel library", e);
+            throw new RuntimeException("Mikel library loading failed", e);
+        }
     }
     
     /**

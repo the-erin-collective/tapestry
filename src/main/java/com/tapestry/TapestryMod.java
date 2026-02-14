@@ -147,6 +147,18 @@ public class TapestryMod implements ModInitializer {
             // Now advance to RUNTIME
             PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
             LOGGER.info("RUNTIME phase completed - Tapestry is ready");
+            
+            // Initialize client presentation layer (Phase 10)
+            if (tsRuntime != null) {
+                try {
+                    tsRuntime.extendForClientPresentation();
+                    PhaseController.getInstance().advanceTo(TapestryPhase.CLIENT_PRESENTATION_READY);
+                    LOGGER.info("CLIENT_PRESENTATION_READY phase completed");
+                } catch (Exception e) {
+                    LOGGER.error("Failed to initialize client presentation layer", e);
+                    // Don't throw - client presentation is optional
+                }
+            }
         });
         
         // Server tick hook - for scheduler and other runtime services
