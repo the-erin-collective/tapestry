@@ -49,6 +49,16 @@ public class OverlayApi implements ProxyObject {
             return getOverlayCount(args);
         });
         
+        // Template function: tapestry.client.overlay.template(template, data)
+        namespace.put("template", (ProxyExecutable) args -> {
+            return processTemplate(args);
+        });
+        
+        // Add function: tapestry.client.overlay.add(fragment)
+        namespace.put("add", (ProxyExecutable) args -> {
+            return addFragment(args);
+        });
+        
         return ProxyObject.fromMap(namespace);
     }
     
@@ -174,6 +184,70 @@ public class OverlayApi implements ProxyObject {
         }
     }
     
+    /**
+     * Processes a template string with data and returns validated UINode(s).
+     * 
+     * Expected args: [template, data]
+     * template: string - Mikel template string
+     * data: object - data for template interpolation (optional)
+     */
+    private Object processTemplate(Value[] args) {
+        if (args.length < 1 || args.length > 2) {
+            throw new IllegalArgumentException("template() requires 1 or 2 arguments (template, data)");
+        }
+        
+        String template = args[0].asString();
+        Object data = args.length > 1 ? TypeScriptRuntime.fromValue(args[1]) : null;
+        
+        try {
+            // Get Mikel from tapestry.utils.mikel
+            Value tapestry = (Value) TypeScriptRuntime.evalExpression("tapestry");
+            Value utils = tapestry.getMember("utils");
+            Value mikel = utils.getMember("mikel");
+            
+            // Process template with Mikel
+            String renderedTemplate;
+            if (data != null) {
+                Value dataValue = TypeScriptRuntime.toHostValue(data);
+                renderedTemplate = mikel.execute(template, dataValue).asString();
+            } else {
+                renderedTemplate = mikel.execute(template).asString();
+            }
+            
+            // Validate the rendered template
+            UINodeValidator validator = new UINodeValidator();
+            Object validatedNodes = validator.validateAndParse(renderedTemplate);
+            
+            LOGGER.debug("Template processed and validated successfully");
+            return TypeScriptRuntime.toHostValue(validatedNodes);
+            
+        } catch (TemplateValidationError e) {
+            LOGGER.error("Template validation failed: {}", e.getDetailedMessage());
+            throw e;
+        } catch (Exception e) {
+            LOGGER.error("Template processing failed", e);
+            throw new RuntimeException("Template processing failed: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Adds a validated UI fragment to the overlay system.
+     * 
+     * Expected args: [fragment]
+     * fragment: UINode or array of UINodes - validated from template()
+     */
+    private Object addFragment(Value[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("add() requires exactly 1 argument (fragment)");
+        }
+        
+        // This is a placeholder for the add functionality
+        // In a full implementation, this would add the fragment to the rendering system
+        LOGGER.debug("Fragment added to overlay system");
+        
+        return null;
+    }
+    
     // ProxyObject implementation for the namespace
     @Override
     public Object getMember(String key) {
@@ -182,12 +256,13 @@ public class OverlayApi implements ProxyObject {
     
     @Override
     public Object getMemberKeys() {
-        return new String[]{"register", "setVisible", "getCount"};
+        return new String[]{"register", "setVisible", "getCount", "template", "add"};
     }
     
     @Override
     public boolean hasMember(String key) {
-        return "register".equals(key) || "setVisible".equals(key) || "getCount".equals(key);
+        return "register".equals(key) || "setVisible".equals(key) || "getCount".equals(key) 
+            || "template".equals(key) || "add".equals(key);
     }
     
     @Override

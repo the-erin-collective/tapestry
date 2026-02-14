@@ -45,6 +45,20 @@ public enum TapestryPhase {
     TS_LOAD,
     
     /**
+     * Mod registration phase.
+     * All mod scripts are evaluated and metadata is collected.
+     * Only mod.define() calls are allowed.
+     */
+    TS_REGISTER,
+    
+    /**
+     * Mod activation phase.
+     * Dependency graph is resolved and mods are activated in order.
+     * mod.export() and mod.require() are allowed.
+     */
+    TS_ACTIVATE,
+    
+    /**
      * TypeScript setup is allowed.
      * Safe setup window for TypeScript mods.
      */

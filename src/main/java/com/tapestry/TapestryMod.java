@@ -18,6 +18,9 @@ import com.tapestry.typescript.TsModDiscovery;
 import com.tapestry.typescript.TsModRegistry;
 import com.tapestry.typescript.TypeScriptRuntime;
 import com.tapestry.typescript.PlayersApi;
+import com.tapestry.mod.ModRegistry;
+import com.tapestry.mod.ModDiscovery;
+import com.tapestry.mod.ModDescriptor;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -143,6 +146,16 @@ public class TapestryMod implements ModInitializer {
             // Advance to PERSISTENCE_READY phase
             PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
             LOGGER.info("PERSISTENCE_READY phase completed");
+            
+            // Initialize Phase 10.5 mod system
+            if (tsRuntime != null) {
+                try {
+                    initializePhase105ModSystem();
+                } catch (Exception e) {
+                    LOGGER.error("Failed to initialize Phase 10.5 mod system", e);
+                    throw new RuntimeException("Phase 10.5 mod system initialization failed", e);
+                }
+            }
             
             // Now advance to RUNTIME
             PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
@@ -550,6 +563,64 @@ public class TapestryMod implements ModInitializer {
             LOGGER.error("Failed to register core player capabilities", e);
             throw new RuntimeException("Core capability registration failed", e);
         }
+    }
+    
+    /**
+     * Initializes the Phase 10.5 mod system with two-pass loading.
+     */
+    private static void initializePhase105ModSystem() {
+        LOGGER.info("Initializing Phase 10.5 mod system");
+        
+        // Advance to TS_REGISTER phase
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
+        LOGGER.info("TS_REGISTER phase started");
+        
+        try {
+            // Extend runtime for registration
+            tsRuntime.extendForRegistration();
+            
+            // Discover and evaluate mods
+            ModDiscovery discovery = new ModDiscovery();
+            List<ModDiscovery.DiscoveredMod> discoveredMods = discovery.discoverMods();
+            
+            if (discoveredMods.isEmpty()) {
+                LOGGER.info("No mods discovered, skipping to activation phase");
+            } else {
+                // Evaluate all mod scripts
+                for (ModDiscovery.DiscoveredMod discoveredMod : discoveredMods) {
+                    try {
+                        String modSource = java.nio.file.Files.readString(
+                            java.nio.file.Paths.get(discoveredMod.entryPath()));
+                        tsRuntime.evaluateModScript(modSource, discoveredMod.id());
+                        LOGGER.debug("Evaluated mod script: {}", discoveredMod.id());
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to evaluate mod script: {}", discoveredMod.id(), e);
+                        throw new RuntimeException("Mod script evaluation failed: " + discoveredMod.id(), e);
+                    }
+                }
+                
+                LOGGER.info("Evaluated {} mod scripts", discoveredMods.size());
+            }
+            
+            // Advance to TS_ACTIVATE phase
+            PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
+            LOGGER.info("TS_ACTIVATE phase started");
+            
+            // Extend runtime for activation
+            tsRuntime.extendForActivation();
+            
+            // Log mod registry stats
+            ModRegistry modRegistry = ModRegistry.getInstance();
+            ModRegistry.ModRegistryStats stats = modRegistry.getStats();
+            LOGGER.info("Phase 10.5 mod system initialized - Registered: {}, Activated: {}, Exports: {}", 
+                       stats.registeredCount(), stats.activatedCount(), stats.exportCount());
+            
+        } catch (Exception e) {
+            LOGGER.error("Phase 10.5 mod system initialization failed", e);
+            throw e;
+        }
+        
+        LOGGER.info("Phase 10.5 mod system initialization complete");
     }
     
     /**

@@ -12,6 +12,10 @@ import com.tapestry.scheduler.SchedulerService;
 import com.tapestry.state.ModStateService;
 import com.tapestry.overlay.OverlayRegistry;
 import com.tapestry.overlay.OverlayApi;
+import com.tapestry.mod.ModRegistry;
+import com.tapestry.mod.ModDescriptor;
+import com.tapestry.mod.ModDiscovery;
+import com.tapestry.performance.PerformanceMonitor;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;
@@ -25,6 +29,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
 import java.io.InputStream;
 import java.io.IOException;
 
@@ -713,6 +719,271 @@ public class TypeScriptRuntime {
         } catch (Exception e) {
             LOGGER.error("Failed to load Mikel library", e);
             throw new RuntimeException("Mikel library loading failed", e);
+        }
+    }
+    
+    /**
+     * Extends the tapestry object for TS_REGISTER phase.
+     * This should be called when transitioning to TS_REGISTER phase.
+     */
+    public void extendForRegistration() {
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_REGISTER);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            LOGGER.info("Extending TypeScript runtime for TS_REGISTER phase");
+            
+            // Initialize mod registry
+            ModRegistry modRegistry = ModRegistry.getInstance();
+            modRegistry.beginRegistration();
+            
+            // Get the existing tapestry object
+            Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+            
+            // Create mod namespace with define API
+            Map<String, Object> modNamespace = new HashMap<>();
+            modNamespace.put("define", createModDefineFunction(modRegistry));
+            tapestryValue.putMember("mod", ProxyObject.fromMap(modNamespace));
+            
+            // Run TS_REGISTER phase sanity check
+            runSanityCheckForPhase(TapestryPhase.TS_REGISTER);
+            
+            LOGGER.info("TypeScript runtime extended for TS_REGISTER phase");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for TS_REGISTER", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for TS_REGISTER", e);
+        }
+    }
+    
+    /**
+     * Extends the tapestry object for TS_ACTIVATE phase.
+     * This should be called when transitioning to TS_ACTIVATE phase.
+     */
+    public void extendForActivation() {
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_ACTIVATE);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            LOGGER.info("Extending TypeScript runtime for TS_ACTIVATE phase");
+            
+            // Get mod registry and validate dependencies
+            ModRegistry modRegistry = ModRegistry.getInstance();
+            modRegistry.validateDependencies();
+            List<ModDescriptor> activationOrder = modRegistry.buildActivationOrder();
+            modRegistry.beginActivation();
+            
+            // Get the existing tapestry object
+            Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+            Value modValue = tapestryValue.getMember("mod");
+            
+            // Add export and require APIs to mod namespace
+            modValue.putMember("export", createModExportFunction(modRegistry));
+            modValue.putMember("require", createModRequireFunction(modRegistry));
+            
+            // Activate all mods in dependency order
+            activateMods(activationOrder);
+            
+            // Run TS_ACTIVATE phase sanity check
+            runSanityCheckForPhase(TapestryPhase.TS_ACTIVATE);
+            
+            LOGGER.info("TypeScript runtime extended for TS_ACTIVATE phase");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for TS_ACTIVATE", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for TS_ACTIVATE", e);
+        }
+    }
+    
+    /**
+     * Creates the mod.define() function for JavaScript.
+     */
+    private ProxyExecutable createModDefineFunction(ModRegistry modRegistry) {
+        return args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("mod.define() requires exactly one argument");
+            }
+            
+            Value definition = args[0];
+            if (!definition.hasMember("id") || !definition.hasMember("version")) {
+                throw new IllegalArgumentException("mod.define() requires 'id' and 'version' fields");
+            }
+            
+            String id = definition.getMember("id").asString();
+            String version = definition.getMember("version").asString();
+            
+            // Parse dependencies
+            List<String> dependsOn = new ArrayList<>();
+            if (definition.hasMember("dependsOn")) {
+                Value depsValue = definition.getMember("dependsOn");
+                if (depsValue.hasArrayElements()) {
+                    for (int i = 0; i < depsValue.getArraySize(); i++) {
+                        dependsOn.add(depsValue.getArrayElement(i).asString());
+                    }
+                }
+            }
+            
+            // Create mod descriptor
+            ModDescriptor descriptor = new ModDescriptor(id, version, dependsOn, null, getCurrentSource());
+            
+            // Store lifecycle functions if present
+            if (definition.hasMember("activate")) {
+                descriptor.setActivateFunction(definition.getMember("activate"));
+            }
+            if (definition.hasMember("deactivate")) {
+                descriptor.setDeactivateFunction(definition.getMember("deactivate"));
+            }
+            
+            // Register the mod
+            modRegistry.registerMod(descriptor);
+            
+            return null;
+        };
+    }
+    
+    /**
+     * Creates the mod.export() function for JavaScript.
+     */
+    private ProxyExecutable createModExportFunction(ModRegistry modRegistry) {
+        return args -> {
+            if (args.length != 2) {
+                throw new IllegalArgumentException("mod.export() requires exactly 2 arguments (key, value)");
+            }
+            
+            String key = args[0].asString();
+            Object value = fromValue(args[1]);
+            String currentModId = getCurrentModId();
+            
+            if (currentModId == null) {
+                throw new IllegalStateException("mod.export() must be called from within a mod context");
+            }
+            
+            modRegistry.registerExport(currentModId, key, value);
+            
+            return null;
+        };
+    }
+    
+    /**
+     * Creates the mod.require() function for JavaScript.
+     */
+    private ProxyExecutable createModRequireFunction(ModRegistry modRegistry) {
+        return args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("mod.require() requires exactly 1 argument (modId)");
+            }
+            
+            String modId = args[0].asString();
+            String currentModId = getCurrentModId();
+            
+            if (currentModId == null) {
+                throw new IllegalStateException("mod.require() must be called from within a mod context");
+            }
+            
+            // Check if dependency is declared
+            ModDescriptor currentMod = modRegistry.getMod(currentModId);
+            if (currentMod == null || !currentMod.hasDependency(modId)) {
+                throw new IllegalArgumentException("mod.require('" + modId + "') not declared in dependsOn for mod '" + currentModId + "'");
+            }
+            
+            Object export = modRegistry.requireExport(modId, "default");
+            return toHostValue(export);
+        };
+    }
+    
+    /**
+     * Activates all mods in the specified order.
+     */
+    private void activateMods(List<ModDescriptor> activationOrder) {
+        LOGGER.info("Activating {} mods in dependency order", activationOrder.size());
+        
+        PerformanceMonitor performanceMonitor = PerformanceMonitor.getInstance();
+        
+        for (ModDescriptor mod : activationOrder) {
+            PerformanceMonitor.ActivationTimer timer = performanceMonitor.startModActivationTiming(mod.getId());
+            
+            try {
+                LOGGER.debug("Activating mod: {}", mod.getId());
+                
+                mod.setState(ModDescriptor.ModState.ACTIVATING);
+                
+                if (mod.hasActivateFunction()) {
+                    setExecutionContext(mod.getId(), ExecutionContextMode.ON_LOAD, mod.getSourcePath());
+                    try {
+                        mod.getActivateFunction().executeVoid();
+                    } finally {
+                        clearExecutionContext();
+                    }
+                }
+                
+                mod.setState(ModDescriptor.ModState.ACTIVE);
+                timer.stop(); // This will check performance limits
+                
+                LOGGER.debug("Successfully activated mod: {}", mod.getId());
+                
+            } catch (Exception e) {
+                timer.stop(); // Still record the time even if failed
+                mod.setState(ModDescriptor.ModState.FAILED);
+                LOGGER.error("Failed to activate mod: {}", mod.getId(), e);
+                throw new RuntimeException("Mod activation failed: " + mod.getId(), e);
+            }
+        }
+        
+        LOGGER.info("All mods activated successfully");
+    }
+    
+    /**
+     * Evaluates a platform script (internal only).
+     * 
+     * @param source the script source
+     * @param name the script name for debugging
+     */
+    public void evaluatePlatformScript(String source, String name) {
+        PhaseController.getInstance().requirePhase(TapestryPhase.BOOTSTRAP);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            evaluateScript(source, name);
+            LOGGER.debug("Platform script evaluated: {}", name);
+        } catch (Exception e) {
+            LOGGER.error("Failed to evaluate platform script: {}", name, e);
+            throw new RuntimeException("Platform script evaluation failed: " + name, e);
+        }
+    }
+    
+    /**
+     * Evaluates a mod script (internal only).
+     * 
+     * @param source the script source
+     * @param name the script name for debugging
+     */
+    public void evaluateModScript(String source, String name) {
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_REGISTER);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            setExecutionContext(null, ExecutionContextMode.ON_LOAD, name);
+            try {
+                evaluateScript(source, name);
+            } finally {
+                clearExecutionContext();
+            }
+            LOGGER.debug("Mod script evaluated: {}", name);
+        } catch (Exception e) {
+            LOGGER.error("Failed to evaluate mod script: {}", name, e);
+            throw new RuntimeException("Mod script evaluation failed: " + name, e);
         }
     }
     
