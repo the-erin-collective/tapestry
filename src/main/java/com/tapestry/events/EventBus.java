@@ -127,11 +127,22 @@ public class EventBus {
         
         // Increment dispatch depth for recursion warning
         int currentDepth = dispatchDepth.get();
-        dispatchDepth.set(currentDepth + 1);
+        int newDepth = currentDepth + 1;
+        dispatchDepth.set(newDepth);
+        
+        // Log recursion warning when entering deep recursion (once per chain)
+        if (newDepth == WARN_DISPATCH_DEPTH + 1) {
+            LOGGER.warn("Deep event dispatch detected: depth {} for event '{}'", 
+                       newDepth, eventName);
+        }
         
         try {
+            // Snapshot listeners to prevent ConcurrentModificationException
+            // This preserves determinism even if listeners modify the set during dispatch
+            List<Listener> listenersSnapshot = new ArrayList<>(listeners);
+            
             // Execute listeners in registration order
-            for (Listener listener : listeners) {
+            for (Listener listener : listenersSnapshot) {
                 try {
                     listener.handler.executeVoid(event);
                 } catch (Exception e) {
@@ -143,12 +154,6 @@ public class EventBus {
         } finally {
             // Decrement dispatch depth
             dispatchDepth.set(currentDepth);
-            
-            // Log recursion warning
-            if (currentDepth >= WARN_DISPATCH_DEPTH) {
-                LOGGER.warn("Deep event dispatch detected: depth {} for event '{}'", 
-                           currentDepth + 1, eventName);
-            }
         }
         
         LOGGER.debug("Event '{}' emitted by '{}' to {} listeners", eventName, emitterModId, listeners.size());
@@ -247,6 +252,15 @@ public class EventBus {
             LOGGER.warn("Total event listeners: {} (exceeds recommended limit of {})", 
                        totalListeners, MAX_TOTAL_LISTENERS);
         }
+    }
+    
+    /**
+     * Gets the current dispatch depth for Phase 12 compatibility.
+     * 
+     * @return current dispatch depth (0 if not in dispatch)
+     */
+    public int getDispatchDepth() {
+        return dispatchDepth.get();
     }
     
     /**
