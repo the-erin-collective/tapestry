@@ -157,6 +157,12 @@ public class ModDiscovery {
             String id = json.get("id").asText();
             String version = json.get("version").asText();
             
+            // Validate version is not empty
+            if (version.isEmpty()) {
+                LOGGER.error("Invalid {}: version must be non-empty", METADATA_FILE);
+                return null;
+            }
+            
             // Validate ID format
             if (id.isEmpty() || id.contains(" ")) {
                 LOGGER.error("Invalid {}: id '{}' must be non-empty and contain no spaces", METADATA_FILE, id);

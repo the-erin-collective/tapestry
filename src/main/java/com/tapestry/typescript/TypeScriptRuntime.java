@@ -15,6 +15,7 @@ import com.tapestry.overlay.OverlayApi;
 import com.tapestry.mod.ModRegistry;
 import com.tapestry.mod.ModDescriptor;
 import com.tapestry.mod.ModDiscovery;
+import com.tapestry.mod.ModActivationException;
 import com.tapestry.performance.PerformanceMonitor;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.io.InputStream;
 import java.io.IOException;
 
@@ -60,9 +62,8 @@ public class TypeScriptRuntime {
     /**
      * Thread-local execution context for tracking current mod and execution mode.
      */
-    private static final ThreadLocal<ExecutionContext> currentContext = ThreadLocal.withInitial(() -> 
-        new ExecutionContext(null, ExecutionContextMode.NONE, null)
-    );
+    private static final ThreadLocal<ExecutionContext> currentContext = new ThreadLocal<>();
+    private static final Set<String> definedMods = ConcurrentHashMap.newKeySet();
 
     /**
      * Represents the current execution context.
@@ -818,6 +819,13 @@ public class TypeScriptRuntime {
             String id = definition.getMember("id").asString();
             String version = definition.getMember("version").asString();
             
+            // Guard against duplicate define() calls from same mod context
+            String currentModId = getCurrentModId();
+            if (currentModId != null && definedMods.contains(currentModId)) {
+                throw new IllegalStateException(
+                    String.format("mod.define() already called for mod '%s'. Each mod may call define() exactly once.", currentModId));
+            }
+            
             // Parse dependencies
             List<String> dependsOn = new ArrayList<>();
             if (definition.hasMember("dependsOn")) {
@@ -842,6 +850,11 @@ public class TypeScriptRuntime {
             
             // Register the mod
             modRegistry.registerMod(descriptor);
+            
+            // Mark this mod as defined to prevent duplicate calls
+            if (currentModId != null) {
+                definedMods.add(currentModId);
+            }
             
             return null;
         };
@@ -931,7 +944,7 @@ public class TypeScriptRuntime {
                 timer.stop(); // Still record the time even if failed
                 mod.setState(ModDescriptor.ModState.FAILED);
                 LOGGER.error("Failed to activate mod: {}", mod.getId(), e);
-                throw new RuntimeException("Mod activation failed: " + mod.getId(), e);
+                throw new ModActivationException(mod.getId(), e);
             }
         }
         

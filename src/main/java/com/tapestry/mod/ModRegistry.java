@@ -83,6 +83,12 @@ public class ModRegistry {
             throw new IllegalArgumentException("Mod already defined in this session: " + modId);
         }
         
+        // Check for self-dependency
+        List<String> dependsOn = descriptor.getDependsOn();
+        if (dependsOn.contains(modId)) {
+            throw new IllegalArgumentException("Mod '" + modId + "' cannot depend on itself");
+        }
+        
         registeredMods.put(modId, descriptor);
         definedMods.add(modId);
         

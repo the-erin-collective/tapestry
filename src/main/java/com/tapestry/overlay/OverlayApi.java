@@ -193,7 +193,7 @@ public class OverlayApi implements ProxyObject {
      */
     private Object processTemplate(Value[] args) {
         if (args.length < 1 || args.length > 2) {
-            throw new IllegalArgumentException("template() requires 1 or 2 arguments (template, data)");
+            throw new TemplateValidationError("template() requires 1 or 2 arguments (template, data)");
         }
         
         String template = args[0].asString();
@@ -238,7 +238,7 @@ public class OverlayApi implements ProxyObject {
      */
     private Object addFragment(Value[] args) {
         if (args.length != 1) {
-            throw new IllegalArgumentException("add() requires exactly 1 argument (fragment)");
+            throw new TemplateValidationError("add() requires exactly 1 argument (fragment)");
         }
         
         // This is a placeholder for the add functionality
