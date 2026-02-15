@@ -3,8 +3,8 @@ plugins {
     id 'java'
 }
 
-version = '0.1.0'
-group = 'com.tapestry'
+version = project.version
+group = project.group
 
 base {
     archivesName = 'tapestry'
@@ -31,9 +31,16 @@ dependencies {
     // Minimal Fabric API - only what we need for Phase 1
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     
+    // Phase 7 player services - lifecycle events and networking
+    modImplementation "net.fabricmc.fabric-api:fabric-lifecycle-events-v1"
+    modImplementation "net.fabricmc.fabric-api:fabric-networking-api-v1"
+    
     // GraalVM Polyglot for TypeScript runtime - use compatible versions
     implementation 'org.graalvm.sdk:graal-sdk:23.0.0'
     implementation 'org.graalvm.js:js:23.0.0'
+    
+    // Jackson for JSON handling
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
@@ -61,4 +68,79 @@ java {
 
 test {
     useJUnitPlatform()
+}
+
+task downloadMikel {
+    description = 'Downloads and embeds the Mikel templating library'
+    group = 'tapestry'
+
+    doLast {
+        def mikelVersion = 'v0.32.0'
+        def downloadUrl = "https://github.com/jmjuanes/mikel/archive/refs/tags/${mikelVersion}.zip"
+        def resourceDir = file('src/main/resources/tapestry/mikel')
+        def targetFile = file("${resourceDir}/mikel.js")
+        
+        // Create resource directory if it doesn't exist
+        resourceDir.mkdirs()
+        
+        println "📥 Downloading Mikel ${mikelVersion}..."
+        println "   URL: ${downloadUrl}"
+        
+        def tempDir = file("${buildDir}/tmp/mikel")
+        tempDir.mkdirs()
+        
+        def zipFile = file("${tempDir}/mikel.zip")
+        
+        try {
+            // Download using curl/PowerShell instead of Ant
+            if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+                exec {
+                    commandLine 'powershell', '-Command', "Invoke-WebRequest -Uri '${downloadUrl}' -OutFile '${zipFile.absolutePath}'"
+                }
+            } else {
+                exec {
+                    commandLine 'curl', '-L', downloadUrl, '-o', zipFile.absolutePath
+                }
+            }
+            
+            println "📦 Extracting Mikel library..."
+            
+            // Extract using PowerShell on Windows, unzip on Unix
+            if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+                exec {
+                    commandLine 'powershell', '-Command', "Expand-Archive -Path '${zipFile.absolutePath}' -DestinationPath '${tempDir.absolutePath}'"
+                }
+            } else {
+                exec {
+                    commandLine 'unzip', zipFile.absolutePath, '-d', tempDir.absolutePath
+                }
+            }
+            
+            // Find and copy the index.js file
+            def extractedDir = file("${tempDir}/mikel-${mikelVersion.substring(1)}")
+            def sourceFile = file("${extractedDir}/index.js")
+            
+            if (!sourceFile.exists()) {
+                throw new GradleException("Mikel index.js not found in extracted archive at ${sourceFile.absolutePath}")
+            }
+            
+            // Copy to resources
+            println "📋 Embedding Mikel library in resources..."
+            copy {
+                from sourceFile
+                into resourceDir
+                rename { 'mikel.js' }
+            }
+            
+            // Clean up
+            delete tempDir
+            
+            println "✅ Mikel library successfully embedded at ${targetFile.absolutePath}"
+            println "   Size: ${targetFile.length()} bytes"
+            
+        } catch (Exception e) {
+            delete tempDir
+            throw new GradleException("Failed to download and embed Mikel library: ${e.message}", e)
+        }
+    }
 }

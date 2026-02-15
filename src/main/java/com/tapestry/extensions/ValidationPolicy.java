@@ -5,6 +5,5 @@ package com.tapestry.extensions;
  */
 public record ValidationPolicy(
     boolean failFast,              // abort whole startup on first error
-    boolean disableInvalid,         // disable bad extensions and continue
-    boolean warnOnOptionalMissing   // warn when optional deps missing
+    boolean disableInvalid          // disable bad extensions and continue
 ) {}

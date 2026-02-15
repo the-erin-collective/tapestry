@@ -278,8 +278,7 @@ public class TapestryMod implements ModInitializer {
             // Set up validation policy
             var policy = new ValidationPolicy(
                 false,  // failFast = false
-                true,   // disableInvalid = true
-                true    // warnOnOptionalMissing = true
+                true    // disableInvalid = true
             );
             
             // Create validator with current Tapestry version

@@ -106,7 +106,10 @@ public class ExtensionValidator {
             // Step 5: Required dependency validation (must be enabled)
             validateRequiredDependenciesEnabled(enabled, rejected);
             
-            // Step 6: Handle policy
+            // Step 6: Post-validation invariant check
+            assertNoEnabledDependsOnRejected(enabled, rejected);
+            
+            // Step 7: Handle policy
             handlePolicy(enabled, rejected, warnings);
             
             LOGGER.info("Extension validation complete: {} enabled, {} rejected, {} warnings",
@@ -413,24 +416,11 @@ public class ExtensionValidator {
         
         ArrayList<String> resolved = new ArrayList<>();
         
-        // Resolve required dependencies
+        // Resolve required dependencies only
         if (descriptor.requires() != null) {
             for (String dep : descriptor.requires()) {
                 if (allDescriptors.containsKey(dep)) {
                     resolved.add(dep);
-                }
-            }
-        }
-        
-        // Resolve optional dependencies
-        if (descriptor.optional() != null && policy.warnOnOptionalMissing()) {
-            for (String dep : descriptor.optional()) {
-                if (allDescriptors.containsKey(dep)) {
-                    resolved.add(dep);
-                } else {
-                    warnings.add(new ValidationMessage(
-                        Severity.WARN, "MISSING_OPTIONAL_DEPENDENCY", 
-                        "Optional dependency '" + dep + "' not found", descriptor.id()));
                 }
             }
         }
@@ -601,5 +591,30 @@ public class ExtensionValidator {
         
         path.removeLast(); // Remove current node when backtracking
         return false;
+    }
+    
+    /**
+     * Post-validation invariant check: No enabled extension may depend on a rejected extension.
+     */
+    private void assertNoEnabledDependsOnRejected(
+            Map<String, ValidatedExtension> enabled,
+            List<RejectedExtension> rejected) {
+        
+        Set<String> rejectedIds = rejected.stream()
+            .map(r -> r.descriptor().id())
+            .collect(Collectors.toSet());
+
+        for (var ext : enabled.values()) {
+            for (String dep : ext.descriptor().requires()) {
+                if (rejectedIds.contains(dep)) {
+                    throw new IllegalStateException(
+                        "Invariant violation: Enabled extension '" +
+                        ext.descriptor().id() +
+                        "' depends on rejected extension '" +
+                        dep + "'"
+                    );
+                }
+            }
+        }
     }
 }
