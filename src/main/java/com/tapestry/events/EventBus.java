@@ -1,5 +1,6 @@
 package com.tapestry.events;
 
+import com.tapestry.state.StateCoordinator;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.graalvm.polyglot.proxy.ProxyObject;
@@ -10,10 +11,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Global synchronous EventBus for Phase 11.
+ * Global synchronous EventBus for Phase 11 with Phase 12 state support.
  * 
  * Provides deterministic, lifecycle-safe event dispatch with namespace enforcement.
- * No async, no priority, no wildcards - simple and reliable.
+ * Supports transactional state mutations with deferred emission.
  */
 public class EventBus {
     
@@ -32,6 +33,25 @@ public class EventBus {
     
     // Dispatch tracking for recursion warning
     private final ThreadLocal<Integer> dispatchDepth = ThreadLocal.withInitial(() -> 0);
+    
+    // Phase 12 State Coordinator
+    private final StateCoordinator stateCoordinator;
+    
+    /**
+     * Creates a new EventBus with Phase 12 state coordination.
+     */
+    public EventBus() {
+        this.stateCoordinator = new StateCoordinator(this);
+    }
+    
+    /**
+     * Gets the StateCoordinator for Phase 12 state management.
+     * 
+     * @return the state coordinator
+     */
+    public StateCoordinator getStateCoordinator() {
+        return stateCoordinator;
+    }
     
     /**
      * Represents an event listener.
@@ -116,47 +136,56 @@ public class EventBus {
     public void emit(String emitterModId, String eventName, Object payload) {
         validateNamespace(emitterModId, eventName, "emit");
         
-        Set<Listener> listeners = eventListeners.get(eventName);
-        if (listeners == null || listeners.isEmpty()) {
-            // No listeners - this is valid per spec (allows future-proof decoupling)
-            return;
-        }
-        
-        // Create event object
-        TapestryEvent event = new TapestryEvent(eventName, extractNamespace(eventName), payload, emitterModId);
-        
-        // Increment dispatch depth for recursion warning
-        int currentDepth = dispatchDepth.get();
-        int newDepth = currentDepth + 1;
-        dispatchDepth.set(newDepth);
-        
-        // Log recursion warning when entering deep recursion (once per chain)
-        if (newDepth == WARN_DISPATCH_DEPTH + 1) {
-            LOGGER.warn("Deep event dispatch detected: depth {} for event '{}'", 
-                       newDepth, eventName);
-        }
+        // Notify StateCoordinator of dispatch start
+        stateCoordinator.onDispatchStart();
         
         try {
-            // Snapshot listeners to prevent ConcurrentModificationException
-            // This preserves determinism even if listeners modify the set during dispatch
-            List<Listener> listenersSnapshot = new ArrayList<>(listeners);
+            Set<Listener> listeners = eventListeners.get(eventName);
+            if (listeners == null || listeners.isEmpty()) {
+                // No listeners - this is valid per spec (allows future-proof decoupling)
+                return;
+            }
             
-            // Execute listeners in registration order
-            for (Listener listener : listenersSnapshot) {
-                try {
-                    listener.handler.executeVoid(event);
-                } catch (Exception e) {
-                    LOGGER.error("Event handler error for mod '{}' on event '{}': {}", 
-                               listener.modId, eventName, e.getMessage(), e);
-                    // Continue dispatching remaining listeners
+            // Create event object
+            TapestryEvent event = new TapestryEvent(eventName, extractNamespace(eventName), payload, emitterModId);
+            
+            // Increment dispatch depth for recursion warning
+            int currentDepth = dispatchDepth.get();
+            int newDepth = currentDepth + 1;
+            dispatchDepth.set(newDepth);
+            
+            // Log recursion warning when entering deep recursion (once per chain)
+            if (newDepth == WARN_DISPATCH_DEPTH + 1) {
+                LOGGER.warn("Deep event dispatch detected: depth {} for event '{}'", 
+                           newDepth, eventName);
+            }
+            
+            try {
+                // Snapshot listeners to prevent ConcurrentModificationException
+                // This preserves determinism even if listeners modify the set during dispatch
+                List<Listener> listenersSnapshot = new ArrayList<>(listeners);
+                
+                // Execute listeners in registration order
+                for (Listener listener : listenersSnapshot) {
+                    try {
+                        listener.handler.executeVoid(event);
+                    } catch (Exception e) {
+                        LOGGER.error("Event handler error for mod '{}' on event '{}': {}", 
+                                   listener.modId, eventName, e.getMessage(), e);
+                        // Continue dispatching remaining listeners
+                    }
                 }
+            } finally {
+                // Decrement dispatch depth
+                dispatchDepth.set(currentDepth);
             }
         } finally {
-            // Decrement dispatch depth
-            dispatchDepth.set(currentDepth);
+            // Notify StateCoordinator of dispatch end (triggers flush if needed)
+            stateCoordinator.onDispatchEnd();
         }
         
-        LOGGER.debug("Event '{}' emitted by '{}' to {} listeners", eventName, emitterModId, listeners.size());
+        LOGGER.debug("Event '{}' emitted by '{}' to {} listeners", eventName, emitterModId, 
+                   eventListeners.getOrDefault(eventName, Collections.emptySet()).size());
     }
     
     /**

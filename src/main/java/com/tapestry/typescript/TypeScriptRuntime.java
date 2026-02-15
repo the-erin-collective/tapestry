@@ -427,6 +427,12 @@ public class TypeScriptRuntime {
             modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
         }
         
+        // Add Phase 12 state API to mod namespace
+        if (modValue != null) {
+            com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
+            modValue.putMember("state", stateFactory.createStateNamespace());
+        }
+        
         LOGGER.debug("Extended tapestry object for RUNTIME phase with Phase 6-9 APIs");
     }
     
@@ -678,6 +684,12 @@ public class TypeScriptRuntime {
                     modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
                     modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
                 }
+                
+                // Add Phase 12 state API to mod namespace
+                if (eventBus != null) {
+                    com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
+                    modValue.putMember("state", stateFactory.createStateNamespace());
+                }
             }
             
             // Initialize overlay renderer
@@ -815,6 +827,12 @@ public class TypeScriptRuntime {
                 modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
                 modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
                 modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
+            }
+            
+            // Add Phase 12 state API to mod namespace
+            if (eventBus != null) {
+                com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
+                modValue.putMember("state", stateFactory.createStateNamespace());
             }
             
             // Activate all mods in dependency order
