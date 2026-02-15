@@ -166,6 +166,21 @@ public class TapestryMod implements ModInitializer {
                 try {
                     tsRuntime.extendForClientPresentation();
                     PhaseController.getInstance().advanceTo(TapestryPhase.CLIENT_PRESENTATION_READY);
+                    
+                    // Emit Phase 11 engine:runtimeStart event
+                    if (eventBus != null) {
+                        try {
+                            eventBus.emit(null, "engine:runtimeStart", Map.of(
+                                "serverTicks", server.getTicks(),
+                                "timestamp", System.currentTimeMillis()
+                            ));
+                        } catch (Exception e) {
+                            LOGGER.error("Error during engine:runtimeStart event emission", e);
+                        }
+                    }
+                    
+                    // Extend runtime for CLIENT_PRESENTATION_READY phase
+                    tsRuntime.extendForClientPresentation();
                     LOGGER.info("CLIENT_PRESENTATION_READY phase completed");
                 } catch (Exception e) {
                     LOGGER.error("Failed to initialize client presentation layer", e);
@@ -176,6 +191,15 @@ public class TapestryMod implements ModInitializer {
         
         // Server tick hook - for scheduler and other runtime services
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            // Emit Phase 11 engine:tick event
+            if (eventBus != null) {
+                try {
+                    eventBus.emit(null, "engine:tick", server.getTicks());
+                } catch (Exception e) {
+                    LOGGER.error("Error during engine:tick event emission", e);
+                }
+            }
+            
             if (schedulerService != null) {
                 try {
                     schedulerService.tick(server.getTicks());
@@ -195,7 +219,7 @@ public class TapestryMod implements ModInitializer {
                     var tick = server.getTicks();
                     
                     // Emit player join event
-                    eventBus.emit("playerJoin", 
+                    eventBus.emit("engine", "playerJoin", 
                         (Map<String, Object>) com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
                             "tapestry", 
                             player.getUuidAsString(), 
@@ -220,7 +244,7 @@ public class TapestryMod implements ModInitializer {
                     var tick = server.getTicks();
                     
                     // Emit player quit event
-                    eventBus.emit("playerQuit", 
+                    eventBus.emit("engine", "playerQuit", 
                         (Map<String, Object>) com.tapestry.runtime.RuntimeContextFactory.createPlayerEventContext(
                             "tapestry", 
                             player.getUuidAsString(), 
@@ -429,9 +453,6 @@ public class TapestryMod implements ModInitializer {
                 LOGGER.debug("Skipping config loading for mod {} (no schema yet)", mod.id());
             }
             
-            // Disallow further event registration
-            eventBus.disallowRegistration();
-            
             // Extend TypeScript runtime with Phase 6 APIs
             tsRuntime.extendForRuntime(schedulerService, eventBus, configService, stateService, modRegistry);
             
@@ -439,7 +460,7 @@ public class TapestryMod implements ModInitializer {
             // For now, we'll just log that they're initialized
             LOGGER.info("Runtime services initialized:");
             LOGGER.info("- SchedulerService: {} pending tasks", schedulerService.getPendingTaskCount());
-            LOGGER.info("- EventBus: {} event types", eventBus.getEventNames().size());
+            LOGGER.info("- EventBus: ready");
             LOGGER.info("- ConfigService: ready");
             LOGGER.info("- ModStateService: ready");
             LOGGER.info("- PlayerService: ready");
@@ -525,6 +546,15 @@ public class TapestryMod implements ModInitializer {
         // This would need to be stored when server becomes available
         // For now, return null as server isn't available during initialization
         return null;
+    }
+    
+    /**
+     * Gets the global EventBus instance for Phase 11 reactive event system.
+     * 
+     * @return the EventBus instance or null if not initialized
+     */
+    public static EventBus getEventBus() {
+        return eventBus;
     }
     
     /**

@@ -17,6 +17,7 @@ import com.tapestry.mod.ModDescriptor;
 import com.tapestry.mod.ModDiscovery;
 import com.tapestry.mod.ModActivationException;
 import com.tapestry.performance.PerformanceMonitor;
+import com.tapestry.events.EventBus;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;
@@ -336,10 +337,7 @@ public class TypeScriptRuntime {
         Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
         
         // Create hook API instance for TS_READY phase (hook registration)
-        TsEventsApi eventsApi = new TsEventsApi(null, modRegistry); // No EventBus during TS_READY
-        
-        // Add events namespace
-        tapestryValue.putMember("events", eventsApi.createNamespace());
+        // Note: Old TsEventsApi removed as it's replaced by Phase 11 ModEventApi
         
         LOGGER.debug("Extended tapestry object for TS_READY phase with hook APIs");
     }
@@ -395,7 +393,7 @@ public class TypeScriptRuntime {
         
         // Create Phase 6 API instances
         TsSchedulerApi schedulerApi = new TsSchedulerApi(schedulerService);
-        TsEventsApi eventsApi = new TsEventsApi(eventBus, modRegistry);
+        // Note: TsEventsApi removed as it's replaced by Phase 11 ModEventApi
         TsConfigApi configApi = new TsConfigApi(configService);
         TsStateApi stateApi = new TsStateApi(stateService);
         TsRuntimeApi runtimeApi = new TsRuntimeApi();
@@ -410,7 +408,7 @@ public class TypeScriptRuntime {
         
         // Add Phase 6 namespaces
         tapestryValue.putMember("scheduler", schedulerApi.createNamespace());
-        tapestryValue.putMember("events", eventsApi.createNamespace());
+        // Note: Old events namespace removed - replaced by mod.on/emit/off API
         tapestryValue.putMember("config", configApi.createNamespace());
         tapestryValue.putMember("state", stateApi.createNamespace());
         tapestryValue.putMember("runtime", runtimeApi.createNamespace());
@@ -418,6 +416,15 @@ public class TypeScriptRuntime {
         // Add Phase 9 persistence namespace if available
         if (persistenceApi != null) {
             tapestryValue.putMember("persistence", persistenceApi);
+        }
+        
+        // Add Phase 11 event API to mod namespace during RUNTIME phase
+        Value modValue = tapestryValue.getMember("mod");
+        if (modValue != null) {
+            ModEventApi modEventApi = new ModEventApi(eventBus);
+            modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
+            modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
+            modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
         }
         
         LOGGER.debug("Extended tapestry object for RUNTIME phase with Phase 6-9 APIs");
@@ -661,6 +668,18 @@ public class TypeScriptRuntime {
             Value clientValue = tapestryValue.getMember("client");
             clientValue.putMember("overlay", overlayApi.createNamespace());
             
+            // Add Phase 11 event API to mod namespace during CLIENT_PRESENTATION_READY phase
+            Value modValue = tapestryValue.getMember("mod");
+            if (modValue != null) {
+                EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
+                if (eventBus != null) {
+                    ModEventApi modEventApi = new ModEventApi(eventBus);
+                    modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
+                    modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
+                    modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
+                }
+            }
+            
             // Initialize overlay renderer
             com.tapestry.overlay.OverlayRenderer.getInstance(overlayRegistry);
             
@@ -787,6 +806,16 @@ public class TypeScriptRuntime {
             // Add export and require APIs to mod namespace
             modValue.putMember("export", createModExportFunction(modRegistry));
             modValue.putMember("require", createModRequireFunction(modRegistry));
+            
+            // Add Phase 11 event API to mod namespace
+            // Note: EventBus will be available through TapestryMod.getInstance().getEventBus()
+            EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
+            if (eventBus != null) {
+                ModEventApi modEventApi = new ModEventApi(eventBus);
+                modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
+                modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
+                modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
+            }
             
             // Activate all mods in dependency order
             activateMods(activationOrder);
@@ -997,6 +1026,41 @@ public class TypeScriptRuntime {
         } catch (Exception e) {
             LOGGER.error("Failed to evaluate mod script: {}", name, e);
             throw new RuntimeException("Mod script evaluation failed: " + name, e);
+        }
+    }
+    
+    /**
+     * Extends tapestry object for EVENT phase.
+     * This should be called when transitioning to EVENT phase.
+     */
+    public void extendForEventPhase() {
+        PhaseController.getInstance().requirePhase(TapestryPhase.EVENT);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            LOGGER.info("Extending TypeScript runtime for EVENT phase");
+            
+            // Get existing tapestry object
+            Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+            
+            // Get existing mod object
+            Value modValue = tapestryValue.getMember("mod");
+            
+            // Add event API to mod namespace
+            com.tapestry.events.EventBus eventBus = new com.tapestry.events.EventBus();
+            ModEventApi modEventApi = new ModEventApi(eventBus);
+            modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
+            modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
+            modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
+            
+            LOGGER.info("TypeScript runtime extended for EVENT phase");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for EVENT phase", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for EVENT phase", e);
         }
     }
     

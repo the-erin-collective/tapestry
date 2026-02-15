@@ -72,6 +72,13 @@ public enum TapestryPhase {
     PERSISTENCE_READY,
     
     /**
+     * Event system is active.
+     * Mods can subscribe to and emit events.
+     * This phase is always executed, becomes no-op if unused.
+     */
+    EVENT,
+    
+    /**
      * Server is live and gameplay begins.
      * Normal mod operation.
      */

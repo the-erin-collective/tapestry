@@ -78,7 +78,7 @@ public class TsEventsApi {
                 source = mod.source();
             }
             
-            eventBus.on(eventName, callback, modId, source);
+            eventBus.subscribe(modId, eventName, callback);
             return null;
         });
         
@@ -105,7 +105,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("playerJoin", callback, modId, source);
+            eventBus.subscribe(modId, "playerJoin", callback);
             return null;
         });
         
@@ -130,7 +130,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("playerQuit", callback, modId, source);
+            eventBus.subscribe(modId, "playerQuit", callback);
             return null;
         });
         
@@ -155,7 +155,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("playerChat", callback, modId, source);
+            eventBus.subscribe(modId, "playerChat", callback);
             return null;
         });
         
@@ -184,7 +184,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("blockBreak", callback, modId, source);
+            eventBus.subscribe(modId, "blockBreak", callback);
             return null;
         });
         
@@ -209,7 +209,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("blockPlace", callback, modId, source);
+            eventBus.subscribe(modId, "blockPlace", callback);
             return null;
         });
         
@@ -238,7 +238,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("serverStarted", callback, modId, source);
+            eventBus.subscribe(modId, "serverStarted", callback);
             return null;
         });
         
@@ -263,7 +263,7 @@ public class TsEventsApi {
             String modId = context.modId();
             String source = getModSource(modId);
             
-            eventBus.on("serverStopping", callback, modId, source);
+            eventBus.subscribe(modId, "serverStopping", callback);
             return null;
         });
         
