@@ -449,6 +449,7 @@ public class TapestryMod implements ModInitializer {
                 ));
             
             // Create capability validator
+            // Use the same config directory as other services (ConfigService)
             var configDir = java.nio.file.Paths.get("config", "tapestry");
             var capabilityValidator = new com.tapestry.extensions.CapabilityValidator(configDir);
             
@@ -464,6 +465,9 @@ public class TapestryMod implements ModInitializer {
                 var capabilityProviders = capabilityValidationResult.capabilityProviders();
                 
                 LOGGER.info("Initializing CapabilityRegistry with {} providers", capabilityProviders.size());
+                LOGGER.debug("Capability providers: {}", capabilityProviders);
+                LOGGER.debug("All provided capabilities: {}", allProvidedCapabilities.keySet());
+                
                 com.tapestry.extensions.CapabilityRegistry.initialize(capabilityProviders, allProvidedCapabilities);
                 com.tapestry.extensions.CapabilityRegistry.freeze();
                 
