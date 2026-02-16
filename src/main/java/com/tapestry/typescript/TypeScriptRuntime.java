@@ -433,6 +433,12 @@ public class TypeScriptRuntime {
             modValue.putMember("state", stateFactory.createStateNamespace());
         }
         
+        // Add Phase 13 runtime capability API to mod namespace
+        if (modValue != null) {
+            com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
+            modValue.putMember("capability", capabilityApi.createRuntimeCapabilityNamespace());
+        }
+        
         LOGGER.debug("Extended tapestry object for RUNTIME phase with Phase 6-9 APIs");
     }
     
@@ -690,6 +696,12 @@ public class TypeScriptRuntime {
                     com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
                     modValue.putMember("state", stateFactory.createStateNamespace());
                 }
+                
+                // Add Phase 13 capability API to mod namespace
+                if (eventBus != null) {
+                    com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
+                    modValue.putMember("capability", capabilityApi.createRuntimeCapabilityNamespace());
+                }
             }
             
             // Initialize overlay renderer
@@ -833,6 +845,12 @@ public class TypeScriptRuntime {
             if (eventBus != null) {
                 com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
                 modValue.putMember("state", stateFactory.createStateNamespace());
+            }
+            
+            // Add Phase 13 capability API to mod namespace
+            if (eventBus != null) {
+                com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
+                modValue.putMember("capability", capabilityApi.createCapabilityNamespace());
             }
             
             // Activate all mods in dependency order

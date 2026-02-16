@@ -6,6 +6,7 @@ import net.fabricmc.loader.api.ModContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -109,7 +110,10 @@ public class ExtensionValidator {
             // Step 6: Post-validation invariant check
             assertNoEnabledDependsOnRejected(enabled, rejected);
             
-            // Step 7: Handle policy
+            // Step 7: Capability validation (Phase 13)
+            validateCapabilities(enabled, rejected, warnings);
+            
+            // Step 8: Handle policy
             handlePolicy(enabled, rejected, warnings);
             
             LOGGER.info("Extension validation complete: {} enabled, {} rejected, {} warnings",
@@ -616,5 +620,40 @@ public class ExtensionValidator {
                 }
             }
         }
+    }
+    
+    /**
+     * Validates capabilities for Phase 13.
+     * 
+     * @param enabled map of enabled extensions
+     * @param rejected list of rejected extensions
+     * @param warnings list to collect warnings
+     */
+    private void validateCapabilities(
+            TreeMap<String, ValidatedExtension> enabled,
+            List<RejectedExtension> rejected,
+            List<ValidationMessage> warnings) {
+        
+        // Build map of extension descriptors
+        Map<String, TapestryExtensionDescriptor> descriptors = new HashMap<>();
+        for (var validated : enabled.values()) {
+            descriptors.put(validated.descriptor().id(), validated.descriptor());
+        }
+        
+        // Create capability validator
+        var capabilityValidator = new CapabilityValidator(Path.of("config")); // TODO: Get actual config dir
+        var result = capabilityValidator.validateCapabilities(descriptors);
+        
+        if (!result.isSuccess()) {
+            // Convert capability errors to extension rejections
+            for (var error : result.errors()) {
+                // For now, we'll just log the error
+                // TODO: Properly integrate capability errors into extension rejections
+                LOGGER.error("Capability validation error: {}", error.message());
+            }
+        }
+        
+        // Add capability warnings to extension warnings
+        warnings.addAll(result.warnings());
     }
 }

@@ -11,6 +11,7 @@ public record TapestryExtensionDescriptor(
     String displayName,              // optional
     String version,                  // optional, informational
     String minTapestry,             // semantic version, inclusive
-    List<CapabilityDecl> capabilities,
-    List<String> requires            // hard dependencies only
+    List<CapabilityDecl> capabilities,    // extension capabilities
+    List<String> requires,           // hard dependencies only
+    List<String> requiresCapabilities // required capabilities
 ) {}
