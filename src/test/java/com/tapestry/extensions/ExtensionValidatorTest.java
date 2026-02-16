@@ -32,7 +32,7 @@ public class ExtensionValidatorTest {
         PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
         
         currentVersion = Version.parse("0.3.0");
-        policy = new ValidationPolicy(false, true, true);
+        policy = new ValidationPolicy(false, true);
         validator = new ExtensionValidator(currentVersion, policy);
     }
     

@@ -147,6 +147,14 @@ public class TsModRegistry {
     }
     
     /**
+     * Marks capability registration phase as complete.
+     * Called after all mods have registered their capabilities during TS_REGISTER phase.
+     */
+    public void completeCapabilityRegistration() {
+        LOGGER.info("Capability registration phase completed");
+    }
+    
+    /**
      * Clears the registry (for testing purposes).
      */
     public void clear() {

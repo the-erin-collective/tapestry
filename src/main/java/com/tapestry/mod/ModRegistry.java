@@ -28,6 +28,9 @@ public class ModRegistry {
     private final List<ModDescriptor> activationOrder = new ArrayList<>();
     private final Map<String, Object> exportRegistry = new ConcurrentHashMap<>();
     
+    // Capability registration state
+    private boolean capabilityRegistrationComplete = false;
+    
     // Performance monitoring
     private final PerformanceMonitor performanceMonitor = PerformanceMonitor.getInstance();
     
@@ -291,6 +294,15 @@ public class ModRegistry {
         }
         
         return export;
+    }
+    
+    /**
+     * Marks capability registration phase as complete.
+     * Called after all mods have registered their capabilities during TS_REGISTER phase.
+     */
+    public void completeCapabilityRegistration() {
+        LOGGER.info("Capability registration phase completed");
+        capabilityRegistrationComplete = true;
     }
     
     /**

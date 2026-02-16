@@ -401,6 +401,31 @@ public class ExtensionValidator {
         
         // Add capability warnings to extension warnings
         warnings.addAll(result.warnings());
+        
+        // Final invariant check: no enabled extension requires a capability that is not in resolved registry
+        assertNoEnabledExtensionRequiresMissingCapability(enabled, result.capabilityProviders());
+    }
+    
+    /**
+     * Final invariant check: No enabled extension requires a capability that is not in resolved registry.
+     */
+    private void assertNoEnabledExtensionRequiresMissingCapability(
+            TreeMap<String, ValidatedExtension> enabled,
+            Map<String, String> capabilityProviders) {
+        
+        for (var extension : enabled.values()) {
+            if (extension.descriptor().requiresCapabilities() != null) {
+                for (String requiredCap : extension.descriptor().requiresCapabilities()) {
+                    if (!capabilityProviders.containsKey(requiredCap)) {
+                        throw new IllegalStateException(
+                            "Invariant violation: Enabled extension '" +
+                            extension.descriptor().id() +
+                            "' requires capability '" + requiredCap + "' which is not provided by any extension"
+                        );
+                    }
+                }
+            }
+        }
     }
     
     /**

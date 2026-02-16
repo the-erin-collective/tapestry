@@ -812,6 +812,47 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Extends the tapestry object for TS_REGISTER phase with capability registration.
+     * This should be called when transitioning to TS_REGISTER phase.
+     */
+    public void extendForCapabilityRegistration() {
+        PhaseController.getInstance().requirePhase(TapestryPhase.TS_REGISTER);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            LOGGER.info("Extending TypeScript runtime for TS_REGISTER phase (capability registration)");
+            
+            // Get existing tapestry object
+            Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+            
+            // Create mod namespace with define API
+            Map<String, Object> modNamespace = new HashMap<>();
+            modNamespace.put("define", createModDefineFunction(ModRegistry.getInstance()));
+            
+            // Add Phase 13 capability API to mod namespace during TS_REGISTER only
+            com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
+            modNamespace.put("capability", capabilityApi.createCapabilityNamespace());
+            
+            // Add runtime capability access API (will be validated by CapabilityRegistry.isFrozen())
+            modNamespace.put("getCapability", capabilityApi.createRuntimeCapabilityNamespace());
+            
+            tapestryValue.putMember("mod", ProxyObject.fromMap(modNamespace));
+            
+            // Run TS_REGISTER phase sanity check
+            runSanityCheckForPhase(TapestryPhase.TS_REGISTER);
+            
+            LOGGER.info("TypeScript runtime extended for TS_REGISTER phase (capability registration)");
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for TS_REGISTER", e);
+            throw new RuntimeException("Failed to extend TypeScript runtime for TS_REGISTER", e);
+        }
+    }
+    
+    /**
      * Extends the tapestry object for TS_ACTIVATE phase.
      * This should be called when transitioning to TS_ACTIVATE phase.
      */

@@ -131,4 +131,57 @@ public class ExtensionValidationReportPrinter {
             LOGGER.warn("⚠ Some extensions were rejected");
         }
     }
+    
+    /**
+     * Prints a detailed capability validation report.
+     * 
+     * @param result the capability validation result
+     */
+    public static void printCapabilityReport(CapabilityValidationResult result) {
+        LOGGER.info("=== CAPABILITY VALIDATION REPORT ===");
+        
+        if (result.errors().isEmpty()) {
+            LOGGER.info("✅ CAPABILITY VALIDATION PASSED");
+            LOGGER.info("Resolved {} capabilities", result.capabilityProviders().size());
+            
+            // Print resolved capabilities
+            if (!result.capabilityProviders().isEmpty()) {
+                LOGGER.info("Resolved capabilities:");
+                for (var entry : result.capabilityProviders().entrySet()) {
+                    LOGGER.info("  {} -> provided by {}", entry.getKey(), entry.getValue());
+                }
+            }
+            
+            // Print dependency graph
+            if (!result.capabilityGraph().isEmpty()) {
+                LOGGER.info("Capability dependency graph:");
+                for (var entry : result.capabilityGraph().entrySet()) {
+                    LOGGER.info("  {} depends on: {}", entry.getKey(), entry.getValue());
+                }
+            }
+            
+        } else {
+            LOGGER.error("❌ CAPABILITY VALIDATION FAILED");
+            LOGGER.error("Found {} errors and {} warnings", 
+                result.errors().size(), result.warnings().size());
+            
+            // Print errors
+            LOGGER.error("Errors:");
+            for (ValidationMessage error : result.errors()) {
+                LOGGER.error("  [{}] {}: {}", 
+                    error.code(), error.extensionId(), error.message());
+            }
+            
+            // Print warnings
+            if (!result.warnings().isEmpty()) {
+                LOGGER.warn("Warnings:");
+                for (ValidationMessage warning : result.warnings()) {
+                    LOGGER.warn("  [{}] {}: {}", 
+                        warning.code(), warning.extensionId(), warning.message());
+                }
+            }
+        }
+        
+        LOGGER.info("=== END CAPABILITY VALIDATION REPORT ===");
+    }
 }

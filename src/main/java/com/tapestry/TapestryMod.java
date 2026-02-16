@@ -398,26 +398,88 @@ public class TapestryMod implements ModInitializer {
         // Allow hook registration
         tsHookRegistry.allowRegistration();
         
-        // Execute onLoad for all mods in deterministic order
-        for (var mod : modRegistry.getMods()) {
-            try {
-                LOGGER.info("Executing onLoad for mod: {}", mod.id());
-                tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id());
-                LOGGER.debug("Completed onLoad for mod: {}", mod.id());
-            } catch (Exception e) {
-                LOGGER.error("Mod {} threw exception in onLoad", mod.id(), e);
-                throw new RuntimeException("Mod onLoad failed: " + mod.id(), e);
-            }
-        }
-        
         // Complete loading phase
         modRegistry.completeLoading();
         
-        // Disallow further hook registration and freeze the registry
+        // Disallow further hook registration and freeze hooks registry
         tsHookRegistry.disallowRegistration();
         tsHookRegistry.freeze();
         
         LOGGER.info("TypeScript mod loading complete");
+        
+        // TS_REGISTER: Capability registration phase
+        LOGGER.info("=== TS_REGISTER PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
+        
+        try {
+            // Extend TypeScript runtime with capability registration APIs
+            tsRuntime.extendForCapabilityRegistration();
+            
+            // Execute onLoad for all mods in deterministic order (capability registration happens here)
+            for (var mod : modRegistry.getMods()) {
+                try {
+                    LOGGER.info("Executing onLoad for mod: {} (capability registration)", mod.id());
+                    tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id());
+                    LOGGER.debug("Completed onLoad for mod: {}", mod.id());
+                } catch (Exception e) {
+                    LOGGER.error("Mod {} threw exception in onLoad", mod.id(), e);
+                    throw new RuntimeException("Mod onLoad failed: " + mod.id(), e);
+                }
+            }
+            
+            // Complete capability registration phase
+            modRegistry.completeCapabilityRegistration();
+            
+            LOGGER.info("TypeScript capability registration complete");
+        } catch (Exception e) {
+            LOGGER.error("Failed during capability registration phase", e);
+            throw new RuntimeException("Capability registration failed", e);
+        }
+        
+        // TS_ACTIVATE: Validate and resolve capabilities
+        LOGGER.info("=== TS_ACTIVATE PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
+        
+        try {
+            // Validate capabilities and resolve dependency graph
+            var capabilityDescriptors = validationResult.enabled().values().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                    ext -> ext.descriptor().id(),
+                    ValidatedExtension::descriptor
+                ));
+            
+            // Create capability validator
+            var configDir = java.nio.file.Paths.get("config", "tapestry");
+            var capabilityValidator = new com.tapestry.extensions.CapabilityValidator(configDir);
+            
+            // Validate capabilities (includes JS vs descriptor consistency check)
+            var capabilityValidationResult = capabilityValidator.validateCapabilities(capabilityDescriptors);
+            
+            // Print capability validation report
+            com.tapestry.extensions.ExtensionValidationReportPrinter.printCapabilityReport(capabilityValidationResult);
+            
+            if (capabilityValidationResult.errors().isEmpty()) {
+                // Initialize CapabilityRegistry with resolved capabilities
+                var allProvidedCapabilities = com.tapestry.typescript.CapabilityApi.getAllProvidedCapabilities();
+                var capabilityProviders = capabilityValidationResult.capabilityProviders();
+                
+                LOGGER.info("Initializing CapabilityRegistry with {} providers", capabilityProviders.size());
+                com.tapestry.extensions.CapabilityRegistry.initialize(capabilityProviders, allProvidedCapabilities);
+                com.tapestry.extensions.CapabilityRegistry.freeze();
+                
+                // Clear temporary capability storage
+                com.tapestry.typescript.CapabilityApi.clearTemporaryStorage();
+                
+                LOGGER.info("Capability system initialized successfully");
+            } else {
+                LOGGER.error("Capability validation failed with {} errors", capabilityValidationResult.errors().size());
+                throw new RuntimeException("Capability validation failed - aborting startup");
+            }
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed during capability activation phase", e);
+            throw new RuntimeException("Capability activation failed", e);
+        }
         
         // RUNTIME: Initialize Phase 6 services and begin gameplay
         initializeRuntimeServices();
