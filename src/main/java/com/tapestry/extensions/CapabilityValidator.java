@@ -1,5 +1,7 @@
 package com.tapestry.extensions;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,20 +42,23 @@ public class CapabilityValidator {
         List<ValidationMessage> warnings = new ArrayList<>();
         
         try {
-            // Step 1: Apply masks to extension capabilities
+            // Step 1: Validate JS declarations match descriptor declarations (Option A)
+            validateJsDeclarationsMatchDescriptors(extensions, errors);
+            
+            // Step 2: Apply masks to extension capabilities
             Map<String, List<CapabilityDecl>> maskedCapabilities = applyCapabilityMasks(extensions, masks, errors);
             
-            // Step 2: Validate unique providers
+            // Step 3: Validate unique providers
             validateUniqueProviders(maskedCapabilities, capabilityProviders, errors);
             
-            // Step 3: Validate required capabilities exist
+            // Step 4: Validate required capabilities exist
             validateRequiredCapabilities(extensions, capabilityProviders, errors);
             
-            // Step 4: Build dependency graph and check for cycles
+            // Step 5: Build dependency graph and check for cycles
             buildDependencyGraph(extensions, capabilityProviders, capabilityGraph);
             validateDependencyCycles(capabilityGraph, errors);
             
-            // Step 5: Final invariant check
+            // Step 6: Final invariant check
             assertNoExtensionDependsOnRejectedCapability(extensions, capabilityProviders, errors);
             
             if (errors.isEmpty()) {
@@ -75,6 +80,77 @@ public class CapabilityValidator {
     }
     
     /**
+     * Validates that JS declarations match descriptor declarations (Option A).
+     */
+    private void validateJsDeclarationsMatchDescriptors(
+            Map<String, TapestryExtensionDescriptor> extensions,
+            List<ValidationMessage> errors) {
+        
+        for (var entry : extensions.entrySet()) {
+            String modId = entry.getKey();
+            var descriptor = entry.getValue();
+            
+            // Get JS-provided capabilities for this mod
+            Map<String, Object> jsProvided = com.tapestry.typescript.CapabilityApi.getProvidedCapabilitiesForMod(modId);
+            Map<String, String> jsRequired = com.tapestry.typescript.CapabilityApi.getRequiredCapabilitiesForMod(modId);
+            
+            // Validate provided capabilities match descriptor
+            Set<String> descriptorProvided = new HashSet<>();
+            if (descriptor.capabilities() != null) {
+                descriptorProvided.addAll(descriptor.capabilities().stream()
+                    .map(CapabilityDecl::name)
+                    .collect(Collectors.toSet()));
+            }
+            
+            // Check for JS-provided capabilities not in descriptor
+            for (String jsCap : jsProvided.keySet()) {
+                if (!descriptorProvided.contains(jsCap)) {
+                    errors.add(new ValidationMessage(
+                        Severity.ERROR, "UNDECLARED_CAPABILITY",
+                        "Mod '" + modId + "' provides capability '" + jsCap + "' not declared in descriptor",
+                        modId));
+                }
+            }
+            
+            // Check for descriptor-declared capabilities not provided by JS
+            for (String descCap : descriptorProvided) {
+                if (!jsProvided.containsKey(descCap)) {
+                    errors.add(new ValidationMessage(
+                        Severity.ERROR, "MISSING_CAPABILITY_IMPLEMENTATION",
+                        "Mod '" + modId + "' declares capability '" + descCap + "' but does not provide implementation",
+                        modId));
+                }
+            }
+            
+            // Validate required capabilities match descriptor
+            Set<String> descriptorRequired = new HashSet<>();
+            if (descriptor.requiresCapabilities() != null) {
+                descriptorRequired.addAll(descriptor.requiresCapabilities());
+            }
+            
+            // Check for JS-required capabilities not in descriptor
+            for (String jsReq : jsRequired.keySet()) {
+                if (!descriptorRequired.contains(jsReq)) {
+                    errors.add(new ValidationMessage(
+                        Severity.ERROR, "UNDECLARED_REQUIREMENT",
+                        "Mod '" + modId + "' requires capability '" + jsReq + "' not declared in descriptor",
+                        modId));
+                }
+            }
+            
+            // Check for descriptor-required capabilities not required by JS
+            for (String descReq : descriptorRequired) {
+                if (!jsRequired.containsKey(descReq)) {
+                    errors.add(new ValidationMessage(
+                        Severity.ERROR, "MISSING_REQUIREMENT_DECLARATION",
+                        "Mod '" + modId + "' declares requirement '" + descReq + "' but does not call requireCapability()",
+                        modId));
+                }
+            }
+        }
+    }
+    
+    /**
      * Loads capability mask files for all mods.
      */
     private Map<String, CapabilityMask> loadCapabilityMasks(Set<String> modIds) {
@@ -86,16 +162,47 @@ public class CapabilityValidator {
             return masks;
         }
         
+        ObjectMapper objectMapper = new ObjectMapper();
+        
         for (String modId : modIds) {
             Path maskFile = capabilitiesDir.resolve(modId + ".json");
             if (Files.exists(maskFile)) {
                 try {
-                    // For now, we'll just create an empty mask
-                    // TODO: Implement JSON parsing of mask files
+                    String content = Files.readString(maskFile);
+                    JsonNode jsonNode = objectMapper.readTree(content);
+                    
+                    // Parse disable array
+                    List<String> disableList = new ArrayList<>();
+                    JsonNode disableNode = jsonNode.get("disable");
+                    if (disableNode != null && disableNode.isArray()) {
+                        for (JsonNode item : disableNode) {
+                            if (item.isTextual()) {
+                                disableList.add(item.asText());
+                            }
+                        }
+                    }
+                    
+                    // Parse meta (optional)
+                    Map<String, Object> meta = new HashMap<>();
+                    JsonNode metaNode = jsonNode.get("meta");
+                    if (metaNode != null && metaNode.isObject()) {
+                        Iterator<Map.Entry<String, JsonNode>> fields = metaNode.fields();
+                        while (fields.hasNext()) {
+                            Map.Entry<String, JsonNode> field = fields.next();
+                            meta.put(field.getKey(), field.getValue().asText());
+                        }
+                    }
+                    
+                    masks.put(modId, new CapabilityMask(disableList, meta));
+                    LOGGER.debug("Loaded capability mask for mod '{}': {} disabled capabilities", modId, disableList.size());
+                    
+                } catch (IOException e) {
+                    LOGGER.error("Failed to parse capability mask for mod '{}': {}", modId, e.getMessage());
+                    // For parsing errors, we'll create an empty mask but log the error
                     masks.put(modId, new CapabilityMask(Collections.emptyList(), Collections.emptyMap()));
-                    LOGGER.debug("Loaded capability mask for mod: {}", modId);
                 } catch (Exception e) {
-                    LOGGER.warn("Failed to load capability mask for mod {}: {}", modId, e.getMessage());
+                    LOGGER.error("Unexpected error loading capability mask for mod '{}': {}", modId, e.getMessage());
+                    masks.put(modId, new CapabilityMask(Collections.emptyList(), Collections.emptyMap()));
                 }
             }
         }
@@ -221,16 +328,18 @@ public class CapabilityValidator {
             String modId = entry.getKey();
             var descriptor = entry.getValue();
             
+            List<String> dependencies = new ArrayList<>();
             if (descriptor.requiresCapabilities() != null) {
-                List<String> dependencies = new ArrayList<>();
                 for (String requiredCap : descriptor.requiresCapabilities()) {
                     String provider = capabilityProviders.get(requiredCap);
                     if (provider != null) {
                         dependencies.add(provider);
                     }
                 }
-                capabilityGraph.put(modId, dependencies);
             }
+            
+            // Always include the mod in the graph, even if it has no dependencies
+            capabilityGraph.put(modId, dependencies);
         }
     }
     
@@ -242,11 +351,11 @@ public class CapabilityValidator {
             List<ValidationMessage> errors) {
         
         Set<String> visited = new HashSet<>();
+        Set<String> recursionStack = new HashSet<>();
         Deque<String> path = new ArrayDeque<>();
         
         for (String modId : capabilityGraph.keySet()) {
-            path.clear();
-            if (hasCapabilityCycle(modId, capabilityGraph, visited, path)) {
+            if (hasCapabilityCycle(modId, capabilityGraph, visited, recursionStack, path)) {
                 // Extract cycle path
                 List<String> cycle = new ArrayList<>();
                 boolean foundStart = false;
@@ -276,15 +385,16 @@ public class CapabilityValidator {
     }
     
     /**
-     * Detects cycles in capability dependency graph.
+     * Detects cycles in capability dependency graph using proper DFS with recursion stack.
      */
     private boolean hasCapabilityCycle(
             String node, 
             Map<String, List<String>> graph, 
             Set<String> visited, 
+            Set<String> recursionStack,
             Deque<String> path) {
         
-        if (path.contains(node)) {
+        if (recursionStack.contains(node)) {
             return true; // Cycle detected
         }
         
@@ -293,15 +403,17 @@ public class CapabilityValidator {
         }
         
         visited.add(node);
+        recursionStack.add(node);
         path.addLast(node);
         
         List<String> dependencies = graph.getOrDefault(node, Collections.emptyList());
         for (String dep : dependencies) {
-            if (hasCapabilityCycle(dep, graph, visited, path)) {
+            if (hasCapabilityCycle(dep, graph, visited, recursionStack, path)) {
                 return true; // Keep cycle in path
             }
         }
         
+        recursionStack.remove(node);
         path.removeLast(); // Remove current node when backtracking
         return false;
     }

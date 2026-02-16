@@ -790,6 +790,14 @@ public class TypeScriptRuntime {
             // Create mod namespace with define API
             Map<String, Object> modNamespace = new HashMap<>();
             modNamespace.put("define", createModDefineFunction(modRegistry));
+            
+            // Add Phase 13 capability API to mod namespace during REGISTRATION only
+            EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
+            if (eventBus != null) {
+                com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
+                modNamespace.put("capability", capabilityApi.createCapabilityNamespace());
+            }
+            
             tapestryValue.putMember("mod", ProxyObject.fromMap(modNamespace));
             
             // Run TS_REGISTER phase sanity check
@@ -845,12 +853,6 @@ public class TypeScriptRuntime {
             if (eventBus != null) {
                 com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
                 modValue.putMember("state", stateFactory.createStateNamespace());
-            }
-            
-            // Add Phase 13 capability API to mod namespace
-            if (eventBus != null) {
-                com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
-                modValue.putMember("capability", capabilityApi.createCapabilityNamespace());
             }
             
             // Activate all mods in dependency order

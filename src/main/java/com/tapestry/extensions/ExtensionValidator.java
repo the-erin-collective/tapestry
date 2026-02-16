@@ -49,63 +49,17 @@ public class ExtensionValidator {
             // Step 1: Group providers by ID for duplicate detection
             Map<String, List<DiscoveredExtensionProvider>> providersById = groupProvidersById(providers);
             
-            // Step 2: Reject all duplicates
-            rejectDuplicateIds(providersById, rejected);
+            // Step 2: Validate descriptors
+            validateDescriptors(providersById, enabled, rejected, warnings);
             
-            // Step 3: Validate individual descriptors (non-duplicates only)
-            Map<String, TapestryExtensionDescriptor> descriptors = new HashMap<>();
-            for (var entry : providersById.entrySet()) {
-                if (entry.getValue().size() == 1) {
-                    var provider = entry.getValue().get(0);
-                    var descriptor = provider.descriptor();
-                    descriptors.put(descriptor.id(), descriptor);
-                }
-            }
+            // Step3: Resolve dependencies
+            resolveDependencies(enabled, rejected);
             
-            // Now resolve dependencies for all valid descriptors
-            Map<String, List<String>> resolvedDepsByExtension = new HashMap<>();
-            for (var entry : providersById.entrySet()) {
-                if (entry.getValue().size() == 1) {
-                    var provider = entry.getValue().get(0);
-                    var descriptor = provider.descriptor();
-                    ArrayList<ValidationMessage> errors = new ArrayList<>();
-                    String modId = provider.sourceMod().getMetadata().getId();
-                    
-                    // Rule Group A: Descriptor shape
-                    validateDescriptorShape(descriptor, errors, modId);
-                    
-                    // Rule Group C: Tapestry version compatibility
-                    validateVersionCompatibility(descriptor, errors, modId);
-                    
-                    // Rule Group D: Capability well-formedness
-                    validateCapabilityWellFormedness(descriptor, errors, modId);
-                    
-                    if (errors.isEmpty()) {
-                        // Valid descriptor - resolve dependencies using complete descriptors map
-                        var resolvedDeps = resolveDependencies(descriptor, descriptors, warnings, modId);
-                        resolvedDepsByExtension.put(descriptor.id(), resolvedDeps);
-                        
-                        var validated = new ValidatedExtension(
-                            descriptor,
-                            provider.provider(),
-                            provider.sourceMod(),
-                            descriptor.capabilities(),
-                            resolvedDepsByExtension.get(descriptor.id())
-                        );
-                        enabled.put(descriptor.id(), validated);
-                    } else {
-                        // Invalid descriptor
-                        var rejectedExt = new RejectedExtension(descriptor, provider.sourceMod(), errors);
-                        rejected.add(rejectedExt);
-                    }
-                }
-            }
+            // Step 4: Check dependency cycles
+            validateDependencyCycles(enabled, rejected);
             
-            // Step 4: Global validation (conflicts, cycles)
-            performGlobalValidation(enabled, rejected, warnings);
-            
-            // Step 5: Required dependency validation (must be enabled)
-            validateRequiredDependenciesEnabled(enabled, rejected);
+            // Step 5: Handle policy
+            handlePolicy(enabled, rejected, warnings);
             
             // Step 6: Post-validation invariant check
             assertNoEnabledDependsOnRejected(enabled, rejected);
@@ -113,16 +67,14 @@ public class ExtensionValidator {
             // Step 7: Capability validation (Phase 13)
             validateCapabilities(enabled, rejected, warnings);
             
-            // Step 8: Handle policy
-            handlePolicy(enabled, rejected, warnings);
-            
-            LOGGER.info("Extension validation complete: {} enabled, {} rejected, {} warnings",
-                enabled.size(), rejected.size(), warnings.size());
+            // Clear temporary capability storage after validation
+            com.tapestry.typescript.CapabilityApi.clearTemporaryStorage();
             
             return new ExtensionValidationResult(enabled, rejected, warnings);
             
-        } finally {
-            // No explicit cleanup needed - phase enforcement is enough
+        } catch (Exception e) {
+            LOGGER.error("Critical error during extension validation", e);
+            throw new RuntimeException("Extension validation failed", e);
         }
     }
     
@@ -130,373 +82,150 @@ public class ExtensionValidator {
      * Groups providers by extension ID for duplicate detection.
      */
     private Map<String, List<DiscoveredExtensionProvider>> groupProvidersById(List<DiscoveredExtensionProvider> providers) {
-        Map<String, List<DiscoveredExtensionProvider>> byId = new TreeMap<>();
-        
+        Map<String, List<DiscoveredExtensionProvider>> grouped = new HashMap<>();
         for (var provider : providers) {
-            var descriptor = provider.descriptor();
-            if (descriptor != null && descriptor.id() != null) {
-                byId.computeIfAbsent(descriptor.id(), k -> new ArrayList<>()).add(provider);
-            }
+            String id = provider.descriptor().id();
+            grouped.computeIfAbsent(id, k -> new ArrayList<>()).add(provider);
         }
-        
-        return byId;
+        return grouped;
     }
     
     /**
-     * Rejects all providers with duplicate IDs.
+     * Validates extension descriptors.
      */
-    private void rejectDuplicateIds(
+    private void validateDescriptors(
             Map<String, List<DiscoveredExtensionProvider>> providersById,
-            List<RejectedExtension> rejected) {
+            TreeMap<String, ValidatedExtension> enabled,
+            ArrayList<RejectedExtension> rejected,
+            ArrayList<ValidationMessage> warnings) {
         
         for (var entry : providersById.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                // Reject ALL providers with this ID
-                for (var provider : entry.getValue()) {
-                    var errors = List.of(new ValidationMessage(
-                        Severity.ERROR, "DUPLICATE_ID", 
-                        "Extension ID '" + entry.getKey() + "' is duplicated", 
-                        provider.descriptor().id()));
-                    
-                    var rejectedExt = new RejectedExtension(
-                        provider.descriptor(), 
-                        provider.sourceMod(), 
-                        errors);
-                    rejected.add(rejectedExt);
+            String id = entry.getKey();
+            List<DiscoveredExtensionProvider> providers = entry.getValue();
+            
+            if (providers.size() > 1) {
+                // Duplicate extension ID
+                for (var provider : providers) {
+                    rejected.add(new RejectedExtension(
+                        provider.descriptor(),
+                        provider.sourceMod(),
+                        List.of(new ValidationMessage(
+                            Severity.ERROR, "DUPLICATE_EXTENSION_ID",
+                            "Extension ID '" + id + "' is provided by multiple mods",
+                            id)))
+                    );
                 }
+                continue;
+            }
+            
+            var provider = providers.get(0);
+            var descriptor = provider.descriptor();
+            var sourceMod = provider.sourceMod();
+            
+            List<ValidationMessage> errors = validateDescriptor(descriptor);
+            if (!errors.isEmpty()) {
+                rejected.add(new RejectedExtension(descriptor, sourceMod, errors));
+            } else {
+                enabled.put(id, new ValidatedExtension(descriptor, provider.provider(), sourceMod, new ArrayList<>(), new ArrayList<>()));
             }
         }
     }
     
     /**
-     * Validates that required dependencies are enabled extensions.
+     * Validates a single extension descriptor.
      */
-    private void validateRequiredDependenciesEnabled(
+    private List<ValidationMessage> validateDescriptor(TapestryExtensionDescriptor descriptor) {
+        List<ValidationMessage> errors = new ArrayList<>();
+        String id = descriptor.id();
+        
+        // Validate extension ID format
+        if (!EXTENSION_ID_PATTERN.matcher(id).matches()) {
+            errors.add(new ValidationMessage(
+                Severity.ERROR, "INVALID_EXTENSION_ID",
+                "Extension ID must match pattern: " + EXTENSION_ID_PATTERN.pattern(),
+                id));
+        }
+        
+        // Validate version
+        try {
+            Version.parse(descriptor.version());
+        } catch (Exception e) {
+            errors.add(new ValidationMessage(
+                Severity.ERROR, "INVALID_VERSION",
+                "Invalid version format: " + descriptor.version(),
+                id));
+        }
+        
+        // Validate Tapestry version requirement
+        try {
+            if (descriptor.minTapestry() != null) {
+                Version minVersion = Version.parse(descriptor.minTapestry());
+                if (currentTapestryVersion.compareTo(minVersion) < 0) {
+                    errors.add(new ValidationMessage(
+                        Severity.ERROR, "INCOMPATIBLE_TAPESTRY_VERSION",
+                        "Requires Tapestry " + minVersion + " but current is " + currentTapestryVersion,
+                        id));
+                }
+            }
+        } catch (Exception e) {
+            errors.add(new ValidationMessage(
+                Severity.ERROR, "INVALID_MIN_TAPESTRY_VERSION",
+                "Invalid minTapestry version: " + descriptor.minTapestry(),
+                id));
+        }
+        
+        // Validate dependencies
+        if (descriptor.requires() != null) {
+            for (String dep : descriptor.requires()) {
+                if (!EXTENSION_ID_PATTERN.matcher(dep).matches()) {
+                    errors.add(new ValidationMessage(
+                        Severity.ERROR, "INVALID_DEPENDENCY_ID",
+                        "Invalid dependency ID: " + dep,
+                        id));
+                }
+            }
+        }
+        
+        return errors;
+    }
+    
+    /**
+     * Resolves extension dependencies.
+     */
+    private void resolveDependencies(
             TreeMap<String, ValidatedExtension> enabled,
             List<RejectedExtension> rejected) {
         
-        // Create set of enabled extension IDs
-        Set<String> enabledIds = enabled.keySet();
-        
-        // Check each enabled extension's required dependencies
-        List<ValidatedExtension> toReject = new ArrayList<>();
-        
-        for (var validated : enabled.values()) {
-            List<String> missingDeps = new ArrayList<>();
+        for (var entry : enabled.entrySet()) {
+            String id = entry.getKey();
+            var extension = entry.getValue();
+            List<String> resolved = new ArrayList<>();
             
-            if (validated.descriptor().requires() != null) {
-                for (String requiredDep : validated.descriptor().requires()) {
-                    if (!enabledIds.contains(requiredDep)) {
-                        missingDeps.add(requiredDep);
+            if (extension.descriptor().requires() != null) {
+                for (String dep : extension.descriptor().requires()) {
+                    if (!enabled.containsKey(dep)) {
+                        rejected.add(new RejectedExtension(
+                            extension.descriptor(),
+                            extension.sourceMod(),
+                            List.of(new ValidationMessage(
+                                Severity.ERROR, "MISSING_DEPENDENCY",
+                                "Missing dependency: " + dep,
+                                id))));
+                        enabled.remove(id);
+                        break;
                     }
-                }
-            }
-            
-            if (!missingDeps.isEmpty()) {
-                // Mark for rejection
-                toReject.add(validated);
-                
-                var errors = List.of(new ValidationMessage(
-                    Severity.ERROR, "MISSING_REQUIRED_DEPENDENCY", 
-                    "Required dependencies not enabled: " + String.join(", ", missingDeps), 
-                    validated.descriptor().id()));
-                
-                var rejectedExt = new RejectedExtension(
-                    validated.descriptor(), 
-                    validated.sourceMod(), 
-                    errors);
-                rejected.add(rejectedExt);
-            }
-        }
-        
-        // Remove rejected extensions from enabled
-        for (var toRemove : toReject) {
-            enabled.remove(toRemove.descriptor().id());
-        }
-    }
-    
-    /**
-     * Handles failFast and disableInvalid policies.
-     */
-    private void handlePolicy(
-            TreeMap<String, ValidatedExtension> enabled,
-            List<RejectedExtension> rejected,
-            List<ValidationMessage> warnings) {
-        
-        // Handle failFast policy
-        if (policy.failFast() && rejected.stream()
-                .anyMatch(r -> r.errors().stream()
-                        .anyMatch(e -> e.severity() == Severity.ERROR))) {
-            // Find first error and throw to abort
-            var firstError = rejected.stream()
-                .flatMap(r -> r.errors().stream())
-                .filter(e -> e.severity() == Severity.ERROR)
-                .findFirst()
-                .orElseThrow();
-            
-            throw new RuntimeException("Validation failed fast: " + firstError.message());
-        }
-        
-        // Handle disableInvalid policy
-        if (!policy.disableInvalid()) {
-            // If we're not disabling invalid extensions, any ERROR should fail startup
-            var hasAnyErrors = rejected.stream()
-                .anyMatch(r -> r.errors().stream()
-                        .anyMatch(e -> e.severity() == Severity.ERROR));
-            
-            if (hasAnyErrors) {
-                var firstError = rejected.stream()
-                    .flatMap(r -> r.errors().stream())
-                    .filter(e -> e.severity() == Severity.ERROR)
-                    .findFirst()
-                    .orElseThrow();
-                
-                throw new RuntimeException("Validation failed: " + firstError.message());
-            }
-        }
-    }
-    
-    /**
-     * Rule Group A: Descriptor shape validation.
-     */
-    private void validateDescriptorShape(
-            TapestryExtensionDescriptor descriptor,
-            List<ValidationMessage> errors,
-            String modId) {
-        
-        // ID validation
-        if (descriptor.id() == null || descriptor.id().trim().isEmpty()) {
-            errors.add(new ValidationMessage(
-                Severity.ERROR, "MISSING_ID", 
-                "Extension ID is required", descriptor.id()));
-            return;
-        }
-        
-        if (!EXTENSION_ID_PATTERN.matcher(descriptor.id()).matches()) {
-            errors.add(new ValidationMessage(
-                Severity.ERROR, "INVALID_ID", 
-                "Extension ID must match pattern: " + EXTENSION_ID_PATTERN.pattern(), 
-                descriptor.id()));
-        }
-        
-        // Capabilities validation
-        if (descriptor.capabilities() == null || descriptor.capabilities().isEmpty()) {
-            errors.add(new ValidationMessage(
-                Severity.ERROR, "MISSING_CAPABILITIES", 
-                "Extension must declare at least one capability", descriptor.id()));
-        }
-    }
-    
-    /**
-     * Rule Group C: Tapestry version compatibility.
-     */
-    private void validateVersionCompatibility(
-            TapestryExtensionDescriptor descriptor,
-            List<ValidationMessage> errors,
-            String modId) {
-        
-        if (descriptor.minTapestry() == null || descriptor.minTapestry().trim().isEmpty()) {
-            errors.add(new ValidationMessage(
-                Severity.ERROR, "MISSING_MIN_VERSION", 
-                "Extension must specify minimum Tapestry version", descriptor.id()));
-            return;
-        }
-        
-        try {
-            Version minVersion = Version.parse(descriptor.minTapestry());
-            if (!currentTapestryVersion.isAtLeast(minVersion)) {
-                errors.add(new ValidationMessage(
-                    Severity.ERROR, "VERSION_TOO_LOW", 
-                    String.format("Extension requires Tapestry %s but current is %s", 
-                        minVersion, currentTapestryVersion), descriptor.id()));
-            }
-        } catch (IllegalArgumentException e) {
-            errors.add(new ValidationMessage(
-                Severity.ERROR, "INVALID_VERSION_FORMAT", 
-                "Invalid minimum version format: " + e.getMessage(), descriptor.id()));
-        }
-    }
-    
-    /**
-     * Rule Group D: Capability well-formedness.
-     */
-    private void validateCapabilityWellFormedness(
-            TapestryExtensionDescriptor descriptor,
-            List<ValidationMessage> errors,
-            String modId) {
-        
-        // Sort capabilities by name for deterministic error reporting
-        List<CapabilityDecl> sortedCapabilities = new ArrayList<>(descriptor.capabilities());
-        sortedCapabilities.sort((a, b) -> a.name().compareTo(b.name()));
-        
-        for (var capability : sortedCapabilities) {
-            // Name validation
-            if (capability.name() == null || capability.name().trim().isEmpty()) {
-                errors.add(new ValidationMessage(
-                    Severity.ERROR, "MISSING_CAPABILITY_NAME", 
-                    "Capability name is required", descriptor.id()));
-                continue;
-            }
-            
-            if (!CAPABILITY_NAME_PATTERN.matcher(capability.name()).matches()) {
-                errors.add(new ValidationMessage(
-                    Severity.ERROR, "INVALID_CAPABILITY_NAME", 
-                    "Capability name must match pattern: " + CAPABILITY_NAME_PATTERN.pattern(), 
-                    descriptor.id()));
-            }
-            
-            // Type validation
-            if (capability.type() == null) {
-                errors.add(new ValidationMessage(
-                    Severity.ERROR, "MISSING_CAPABILITY_TYPE", 
-                    "Capability type is required", descriptor.id()));
-            }
-            
-            // Meta validation (permissive)
-            validateCapabilityMeta(capability, errors, descriptor.id());
-        }
-    }
-    
-    /**
-     * Validates capability metadata fields.
-     */
-    private void validateCapabilityMeta(
-            CapabilityDecl capability,
-            List<ValidationMessage> errors,
-            String extensionId) {
-        
-        if (capability.meta() == null) return;
-        
-        for (var entry : capability.meta().entrySet()) {
-            // Check for null keys
-            if (entry.getKey() == null) {
-                errors.add(new ValidationMessage(
-                    Severity.ERROR, "NULL_META_KEY", 
-                    "Capability meta keys cannot be null", extensionId));
-                continue;
-            }
-            
-            // Check for non-serializable values
-            Object value = entry.getValue();
-            if (value != null && !isSerializableType(value)) {
-                errors.add(new ValidationMessage(
-                    Severity.ERROR, "INVALID_META_VALUE_TYPE", 
-                    "Capability meta values must be serializable (String, Number, Boolean, List, Map)", 
-                    extensionId));
-            }
-        }
-    }
-    
-    /**
-     * Checks if a value is a serializable type for meta validation.
-     */
-    private boolean isSerializableType(Object value) {
-        return value instanceof String ||
-               value instanceof Number ||
-               value instanceof Boolean ||
-               (value instanceof List && isSerializableList((List<?>) value)) ||
-               (value instanceof Map && isSerializableMap((Map<?, ?>) value));
-    }
-    
-    @SuppressWarnings("unchecked")
-    private boolean isSerializableList(List<?> list) {
-        return list.stream().allMatch(this::isSerializableType);
-    }
-    
-    @SuppressWarnings("unchecked")
-    private boolean isSerializableMap(Map<?, ?> map) {
-        return map.keySet().stream().allMatch(k -> k instanceof String) &&
-               map.values().stream().allMatch(this::isSerializableType);
-    }
-    
-    /**
-     * Resolves extension dependencies and validates them.
-     */
-    private List<String> resolveDependencies(
-            TapestryExtensionDescriptor descriptor,
-            Map<String, TapestryExtensionDescriptor> allDescriptors,
-            List<ValidationMessage> warnings,
-            String modId) {
-        
-        ArrayList<String> resolved = new ArrayList<>();
-        
-        // Resolve required dependencies only
-        if (descriptor.requires() != null) {
-            for (String dep : descriptor.requires()) {
-                if (allDescriptors.containsKey(dep)) {
                     resolved.add(dep);
                 }
             }
-        }
-        
-        return resolved;
-    }
-    
-    /**
-     * Performs global validation across all extensions.
-     */
-    private void performGlobalValidation(
-            TreeMap<String, ValidatedExtension> enabled,
-            List<RejectedExtension> rejected,
-            List<ValidationMessage> warnings) {
-        
-        // Rule Group E: Capability conflicts
-        validateCapabilityConflicts(enabled, rejected);
-        
-        // Rule Group F: Dependency cycles
-        validateDependencyCycles(enabled, rejected);
-    }
-    
-    /**
-     * Rule Group E: Check for capability conflicts.
-     */
-    private void validateCapabilityConflicts(
-            TreeMap<String, ValidatedExtension> enabled,
-            List<RejectedExtension> rejected) {
-        
-        TreeMap<String, List<String>> capabilityToExtensions = new TreeMap<>();
-        
-        // Collect all capabilities by name and track which extensions claim them
-        for (var validated : enabled.values()) {
-            for (var capability : validated.capabilitiesResolved()) {
-                // Apply default exclusivity if flag is omitted
-                boolean isExclusive = capability.exclusive() || 
-                    (capability.type() != CapabilityType.HOOK);
-                
-                if (isExclusive) {
-                    capabilityToExtensions.computeIfAbsent(capability.name(), k -> new ArrayList<>())
-                        .add(validated.descriptor().id());
-                }
-            }
-        }
-        
-        // Sort extension ID lists for deterministic processing
-        for (var entry : capabilityToExtensions.entrySet()) {
-            entry.getValue().sort(String::compareTo);
-        }
-        
-        // Find conflicts
-        for (var entry : capabilityToExtensions.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                // Conflict found - reject all conflicting extensions
-                for (String extensionId : entry.getValue()) {
-                    var conflictingExtension = enabled.get(extensionId);
-                    if (conflictingExtension != null) {
-                        var errors = List.of(new ValidationMessage(
-                            Severity.ERROR, "CAPABILITY_CONFLICT", 
-                            "Capability '" + entry.getKey() + "' is claimed by multiple extensions", 
-                            extensionId));
-                        
-                        var rejectedExt = new RejectedExtension(
-                            conflictingExtension.descriptor(), 
-                            conflictingExtension.sourceMod(), 
-                            errors);
-                        rejected.add(rejectedExt);
-                        
-                        // Remove from enabled
-                        enabled.remove(extensionId);
-                    }
-                }
+            
+            if (enabled.containsKey(id)) {
+                extension = new ValidatedExtension(
+                    extension.descriptor(),
+                    extension.provider(),
+                    extension.sourceMod(),
+                    extension.capabilitiesResolved(),
+                    resolved);
+                enabled.put(id, extension);
             }
         }
     }
@@ -641,19 +370,126 @@ public class ExtensionValidator {
         }
         
         // Create capability validator
-        var capabilityValidator = new CapabilityValidator(Path.of("config")); // TODO: Get actual config dir
+        Path configDir = getConfigDirectory();
+        var capabilityValidator = new CapabilityValidator(configDir);
         var result = capabilityValidator.validateCapabilities(descriptors);
         
         if (!result.isSuccess()) {
             // Convert capability errors to extension rejections
             for (var error : result.errors()) {
-                // For now, we'll just log the error
-                // TODO: Properly integrate capability errors into extension rejections
-                LOGGER.error("Capability validation error: {}", error.message());
+                // Find the mod responsible for this error
+                String modId = extractModIdFromCapabilityError(error, enabled);
+                if (modId != null) {
+                    // Reject the extension responsible
+                    var extension = enabled.get(modId);
+                    if (extension != null) {
+                        rejected.add(new RejectedExtension(
+                            extension.descriptor(),
+                            extension.sourceMod(),
+                            List.of(new ValidationMessage(Severity.ERROR, error.code(), error.message(), modId))
+                        ));
+                        enabled.remove(modId);
+                    }
+                }
             }
+        } else {
+            // Success: initialize and freeze the capability registry
+            Map<String, Object> implementations = collectCapabilityImplementations(enabled);
+            CapabilityRegistry.initialize(result.capabilityProviders(), implementations);
+            CapabilityRegistry.freeze();
         }
         
         // Add capability warnings to extension warnings
         warnings.addAll(result.warnings());
+    }
+    
+    /**
+     * Extracts mod ID from capability validation error.
+     */
+    private String extractModIdFromCapabilityError(ValidationMessage error, TreeMap<String, ValidatedExtension> enabled) {
+        // For now, this is a simplified implementation
+        // In a full implementation, we'd parse the error message to extract the responsible mod
+        switch (error.code()) {
+            case "DUPLICATE_CAPABILITY_PROVIDER":
+                // Parse error message to find mod ID
+                String message = error.message();
+                for (var entry : enabled.entrySet()) {
+                    if (message.contains(entry.getKey())) {
+                        return entry.getKey();
+                    }
+                }
+                break;
+            case "MISSING_REQUIRED_CAPABILITY":
+                // Parse error message to find mod ID
+                String missingMessage = error.message();
+                for (var entry : enabled.entrySet()) {
+                    if (missingMessage.contains(entry.getKey())) {
+                        return entry.getKey();
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+        return null;
+    }
+    
+    /**
+     * Collects capability implementations from enabled extensions.
+     */
+    private Map<String, Object> collectCapabilityImplementations(TreeMap<String, ValidatedExtension> enabled) {
+        Map<String, Object> implementations = new HashMap<>();
+        
+        for (var entry : enabled.entrySet()) {
+            String modId = entry.getKey();
+            var extension = entry.getValue();
+            
+            // Get implementations from CapabilityApi temporary storage
+            Map<String, Object> modImplementations = com.tapestry.typescript.CapabilityApi.getProvidedCapabilitiesForMod(modId);
+            if (modImplementations != null) {
+                implementations.putAll(modImplementations);
+            }
+        }
+        
+        return implementations;
+    }
+    
+    /**
+     * Gets the actual config directory from the runtime environment.
+     */
+    private Path getConfigDirectory() {
+        // Try to get config directory from Fabric Loader
+        try {
+            net.fabricmc.loader.api.FabricLoader loader = net.fabricmc.loader.api.FabricLoader.getInstance();
+            Path configDir = loader.getConfigDir();
+            if (configDir != null) {
+                return configDir;
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to get config directory from Fabric Loader: {}", e.getMessage());
+        }
+        
+        // Fallback to default
+        return Path.of("config");
+    }
+    
+    /**
+     * Handles validation policy.
+     */
+    private void handlePolicy(
+            TreeMap<String, ValidatedExtension> enabled,
+            List<RejectedExtension> rejected,
+            List<ValidationMessage> warnings) {
+        
+        if (policy.disableInvalid()) {
+            for (var rejectedExt : rejected) {
+                for (var error : rejectedExt.errors()) {
+                    if (error.code().equals("MISSING_DEPENDENCY")) {
+                        warnings.add(new ValidationMessage(
+                            Severity.WARN, error.code(), error.message(), error.extensionId()));
+                    }
+                }
+            }
+        }
     }
 }

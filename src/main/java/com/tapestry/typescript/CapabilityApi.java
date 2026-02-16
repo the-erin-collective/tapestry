@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Phase 13 Capability API for mods.
@@ -21,9 +22,9 @@ public class CapabilityApi {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(CapabilityApi.class);
     
-    // Temporary storage for capability declarations during registration
-    private static final Map<String, Object> providedCapabilities = new HashMap<>();
-    private static final Map<String, String> requiredCapabilities = new HashMap<>();
+    // Temporary storage for capability declarations during registration - per-mod isolation
+    private static final Map<String, Map<String, Object>> providedCapabilitiesByMod = new ConcurrentHashMap<>();
+    private static final Map<String, Map<String, String>> requiredCapabilitiesByMod = new ConcurrentHashMap<>();
     
     /**
      * Creates the capability namespace object for JavaScript mods.
@@ -45,10 +46,12 @@ public class CapabilityApi {
             validatePhase("provideCapability");
             validateCapabilityName(capabilityName);
             
-            // Store for later resolution
-            providedCapabilities.put(capabilityName, implementation);
+            // Store for later resolution - per-mod isolation
+            String modId = getCurrentModId();
+            providedCapabilitiesByMod.computeIfAbsent(modId, k -> new HashMap<>())
+                .put(capabilityName, implementation);
             
-            LOGGER.debug("Mod '{}' provided capability '{}'", getCurrentModId(), capabilityName);
+            LOGGER.debug("Mod '{}' provided capability '{}'", modId, capabilityName);
             
             return null;
         });
@@ -64,10 +67,12 @@ public class CapabilityApi {
             validatePhase("requireCapability");
             validateCapabilityName(capabilityName);
             
-            // Store requirement for later validation
-            requiredCapabilities.put(capabilityName, getCurrentModId());
+            // Store requirement for later validation - per-mod isolation
+            String modId = getCurrentModId();
+            requiredCapabilitiesByMod.computeIfAbsent(modId, k -> new HashMap<>())
+                .put(capabilityName, modId);
             
-            LOGGER.debug("Mod '{}' requires capability '{}'", getCurrentModId(), capabilityName);
+            LOGGER.debug("Mod '{}' requires capability '{}'", modId, capabilityName);
             
             return null;
         });
@@ -103,29 +108,59 @@ public class CapabilityApi {
     }
     
     /**
-     * Gets all provided capabilities for this mod.
+     * Gets all provided capabilities for a specific mod.
      * 
+     * @param modId the mod ID
      * @return map of capability name to implementation
      */
-    public static Map<String, Object> getProvidedCapabilities() {
-        return Map.copyOf(providedCapabilities);
+    public static Map<String, Object> getProvidedCapabilitiesForMod(String modId) {
+        Map<String, Object> modCapabilities = providedCapabilitiesByMod.get(modId);
+        return modCapabilities != null ? Map.copyOf(modCapabilities) : Map.of();
     }
     
     /**
-     * Gets all required capabilities for this mod.
+     * Gets all provided capabilities across all mods.
+     * 
+     * @return map of capability name to implementation
+     */
+    public static Map<String, Object> getAllProvidedCapabilities() {
+        Map<String, Object> allCapabilities = new HashMap<>();
+        for (var modCapabilities : providedCapabilitiesByMod.values()) {
+            allCapabilities.putAll(modCapabilities);
+        }
+        return Map.copyOf(allCapabilities);
+    }
+    
+    /**
+     * Gets all required capabilities for a specific mod.
+     * 
+     * @param modId the mod ID
+     * @return map of capability name to requiring mod ID
+     */
+    public static Map<String, String> getRequiredCapabilitiesForMod(String modId) {
+        Map<String, String> modRequirements = requiredCapabilitiesByMod.get(modId);
+        return modRequirements != null ? Map.copyOf(modRequirements) : Map.of();
+    }
+    
+    /**
+     * Gets all required capabilities across all mods.
      * 
      * @return map of capability name to requiring mod ID
      */
-    public static Map<String, String> getRequiredCapabilities() {
-        return Map.copyOf(requiredCapabilities);
+    public static Map<String, String> getAllRequiredCapabilities() {
+        Map<String, String> allRequirements = new HashMap<>();
+        for (var modRequirements : requiredCapabilitiesByMod.values()) {
+            allRequirements.putAll(modRequirements);
+        }
+        return Map.copyOf(allRequirements);
     }
     
     /**
      * Clears temporary capability storage (called after validation).
      */
     public static void clearTemporaryStorage() {
-        providedCapabilities.clear();
-        requiredCapabilities.clear();
+        providedCapabilitiesByMod.clear();
+        requiredCapabilitiesByMod.clear();
         LOGGER.debug("Cleared temporary capability storage");
     }
     
@@ -134,9 +169,9 @@ public class CapabilityApi {
      */
     private void validatePhase(String operation) {
         TapestryPhase currentPhase = PhaseController.getInstance().getCurrentPhase();
-        if (currentPhase != TapestryPhase.REGISTRATION) {
+        if (currentPhase != TapestryPhase.TS_REGISTER) {
             throw new IllegalStateException(
-                String.format("%s is only available during REGISTRATION phase. Current phase: %s", 
+                String.format("%s is only available during TS_REGISTER phase. Current phase: %s", 
                              operation, currentPhase));
         }
     }
