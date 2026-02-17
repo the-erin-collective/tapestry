@@ -1,11 +1,20 @@
 package com.tapestry.extensions;
 
+import com.tapestry.extensions.types.ExtensionTypeRegistry;
+import com.tapestry.extensions.types.TypeValidator;
+import com.tapestry.extensions.types.TypeValidationError;
+import com.tapestry.extensions.types.ExtensionTypeRegistry.TypeModule;
+import com.tapestry.extensions.types.TypeValidator.TypeValidationResult;
+import com.tapestry.extensions.types.TapestryTypeResolver.TapestryTypeResolutionException;
+import com.tapestry.extensions.types.GraalVMTypeIntegration;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
 import net.fabricmc.loader.api.ModContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -25,10 +34,21 @@ public class ExtensionValidator {
     
     private final Version currentTapestryVersion;
     private final ValidationPolicy policy;
+    private final ExtensionTypeRegistry typeRegistry;
+    private final TypeValidator typeValidator;
     
     public ExtensionValidator(Version currentTapestryVersion, ValidationPolicy policy) {
         this.currentTapestryVersion = currentTapestryVersion;
         this.policy = policy;
+        this.typeRegistry = new ExtensionTypeRegistry();
+        this.typeValidator = new TypeValidator();
+    }
+    
+    /**
+     * Gets the type registry for use by other components.
+     */
+    public ExtensionTypeRegistry getTypeRegistry() {
+        return typeRegistry;
     }
     
     /**
@@ -69,6 +89,12 @@ public class ExtensionValidator {
             
             // Clear temporary capability storage after validation
             com.tapestry.typescript.CapabilityApi.clearTemporaryStorage();
+            
+            // Step 8: Phase 14 type validation
+            validateTypes(providers, enabled, rejected, warnings);
+            
+            // Step 9: TYPE_INIT sub-step - freeze type registry
+            typeRegistry.freeze();
             
             return new ExtensionValidationResult(enabled, rejected, warnings);
             
@@ -516,5 +542,163 @@ public class ExtensionValidator {
                 }
             }
         }
+    }
+    
+    /**
+     * Phase 14: Validates type-related aspects of extensions.
+     * 
+     * @param providers List of discovered extension providers
+     * @param enabled Map of enabled extensions
+     * @param rejected List of rejected extensions (will be modified)
+     * @param warnings List of warnings (will be modified)
+     */
+    private void validateTypes(
+            List<DiscoveredExtensionProvider> providers,
+            TreeMap<String, ValidatedExtension> enabled,
+            List<RejectedExtension> rejected,
+            List<ValidationMessage> warnings) {
+        
+        LOGGER.info("Starting Phase 14 type validation");
+        
+        // Step 1: Load type files into registry during DISCOVERY phase
+        loadTypeFiles(providers);
+        
+        // Step 2: Build map of all descriptors for cross-validation
+        Map<String, TapestryExtensionDescriptor> allDescriptors = new HashMap<>();
+        for (var provider : providers) {
+            allDescriptors.put(provider.descriptor().id(), provider.descriptor());
+        }
+        
+        // Step 3: Validate individual descriptors
+        for (var provider : providers) {
+            Path extensionRoot = getExtensionRoot(provider.sourceMod());
+            var typeErrors = typeValidator.validateDescriptor(
+                provider.descriptor(),
+                extensionRoot,
+                allDescriptors
+            );
+            
+            // Convert type validation errors to extension rejections
+            if (!typeErrors.isEmpty()) {
+                var extension = enabled.get(provider.descriptor().id());
+                if (extension != null) {
+                    List<ValidationMessage> validationErrors = typeErrors.stream()
+                        .map(te -> new ValidationMessage(
+                            Severity.ERROR,
+                            te.error().getCode(),
+                            te.message(),
+                            te.extensionId()
+                        ))
+                        .toList();
+                    
+                    rejected.add(new RejectedExtension(
+                        provider.descriptor(),
+                        provider.sourceMod(),
+                        validationErrors
+                    ));
+                    enabled.remove(provider.descriptor().id());
+                }
+            }
+        }
+        
+        // Step 4: Validate cross-extension relationships
+        var crossValidationErrors = typeValidator.validateCrossExtensionRelations(allDescriptors);
+        for (var error : crossValidationErrors) {
+            var extension = enabled.get(error.extensionId());
+            if (extension != null) {
+                List<ValidationMessage> validationErrors = List.of(new ValidationMessage(
+                    Severity.ERROR,
+                    error.error().getCode(),
+                    error.message(),
+                    error.extensionId()
+                ));
+                
+                rejected.add(new RejectedExtension(
+                    extension.descriptor(),
+                    extension.sourceMod(),
+                    validationErrors
+                ));
+                enabled.remove(error.extensionId());
+            }
+        }
+        
+        // Step 5: Update dependency graph to include type import edges for cycle detection
+        updateDependencyGraphWithTypeImports(enabled);
+        
+        LOGGER.info("Phase 14 type validation completed. Enabled: {}, Rejected: {}", 
+            enabled.size(), rejected.size());
+    }
+    
+    /**
+     * Loads type files into the registry during DISCOVERY phase.
+     */
+    private void loadTypeFiles(List<DiscoveredExtensionProvider> providers) {
+        for (var provider : providers) {
+            var descriptor = provider.descriptor();
+            
+            if (descriptor.typeExportEntry().isPresent()) {
+                Path extensionRoot = getExtensionRoot(provider.sourceMod());
+                Path typeFile = extensionRoot.resolve(descriptor.typeExportEntry().get());
+                
+                try {
+                    String dtsSource = Files.readString(typeFile);
+                    typeRegistry.storeTypeModule(descriptor.id(), dtsSource);
+                    LOGGER.debug("Loaded type file for extension: {}", descriptor.id());
+                } catch (IOException e) {
+                    LOGGER.warn("Failed to load type file for extension {}: {}", 
+                        descriptor.id(), e.getMessage());
+                    // Validation will catch this as TYPE_EXPORT_FILE_NOT_FOUND
+                }
+            }
+        }
+    }
+    
+    /**
+     * Updates dependency graph to include type import edges for unified cycle detection.
+     * Note: Type imports are validated to be a subset of requiredDependencies,
+     * so they're already included in the dependency graph for cycle detection.
+     * This method exists for clarity and future extensibility.
+     */
+    private void updateDependencyGraphWithTypeImports(TreeMap<String, ValidatedExtension> enabled) {
+        for (var extension : enabled.values()) {
+            List<String> typeImports = extension.descriptor().typeImports();
+            if (!typeImports.isEmpty()) {
+                LOGGER.debug("Extension {} has type imports: {}", 
+                    extension.descriptor().id(), typeImports);
+                
+                // Verify that all type imports are in required dependencies
+                // This should always be true due to prior validation
+                for (String typeImport : typeImports) {
+                    if (!extension.descriptor().requires().contains(typeImport)) {
+                        // This should never happen due to validation, but log for safety
+                        LOGGER.error("Invariant violation: type import '{}' not in required dependencies for extension '{}'",
+                            typeImport, extension.descriptor().id());
+                    }
+                }
+            }
+        }
+        
+        // The existing cycle detection in validateDependencyCycles() already uses
+        // resolvedDependencies(), which includes all required dependencies.
+        // Since typeImports ⊆ requiredDependencies, the unified DAG is correct.
+    }
+    
+    /**
+     * Gets the extension root directory from a mod container.
+     */
+    private Path getExtensionRoot(ModContainer sourceMod) {
+        try {
+            // Try to get the mod's root directory
+            Path modPath = sourceMod.getRootPath();
+            if (modPath != null) {
+                return modPath;
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to get root path for mod {}: {}", 
+                sourceMod.getMetadata().getId(), e.getMessage());
+        }
+        
+        // Fallback to current directory
+        return Path.of(".");
     }
 }

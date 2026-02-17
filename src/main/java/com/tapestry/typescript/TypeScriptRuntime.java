@@ -2,6 +2,8 @@ package com.tapestry.typescript;
 
 import com.tapestry.config.ConfigService;
 import com.tapestry.events.EventBus;
+import com.tapestry.extensions.types.GraalVMTypeIntegration;
+import com.tapestry.extensions.types.ExtensionTypeRegistry;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
@@ -47,6 +49,10 @@ import java.io.IOException;
 public class TypeScriptRuntime {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(TypeScriptRuntime.class);
+    
+    // Phase 14: Type integration for cross-mod type contracts
+    private static GraalVMTypeIntegration typeIntegration;
+    private static ExtensionTypeRegistry typeRegistry;
     
     private static Context jsContext;
     private static boolean initialized = false;
@@ -183,12 +189,15 @@ public class TypeScriptRuntime {
     
     /**
      * Initializes the TypeScript runtime with mod loading capabilities.
+     * Phase 14: Accepts type registry for cross-mod type contracts.
      * 
      * @param apiTree frozen ProxyObject tree to expose as tapestry object
      * @param modRegistry the mod registry for registration
      * @param hookRegistry the hook registry for hook registration
+     * @param typeRegistry the type registry for Phase 14 (optional)
      */
-    public void initializeForModLoading(ProxyObject apiTree, TsModRegistry modRegistry, HookRegistry hookRegistry) {
+    public void initializeForModLoading(ProxyObject apiTree, TsModRegistry modRegistry, 
+                                       HookRegistry hookRegistry, ExtensionTypeRegistry typeRegistry) {
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
         
         if (initialized) {
@@ -199,12 +208,19 @@ public class TypeScriptRuntime {
             // Clear source tracking for fresh runtime initialization
             clearSourceTracking();
             
+            // Store type registry for Phase 14
+            TypeScriptRuntime.typeRegistry = typeRegistry;
+            
             // Initialize the define function
             defineFunction = new TsModDefineFunction(modRegistry);
             
+            // Create GraalVM context with HostAccess for file system access
+            HostAccess hostAccess = HostAccess.newBuilder()
+                .build();
+            
             // Create JavaScript context with HostAccess.NONE for security
             jsContext = Context.newBuilder("js")
-                .allowHostAccess(HostAccess.NONE)
+                .allowHostAccess(hostAccess)
                 .allowHostClassLookup(s -> false)
                 .allowIO(false)
                 .build();
@@ -814,6 +830,7 @@ public class TypeScriptRuntime {
     /**
      * Extends the tapestry object for TS_REGISTER phase with capability registration.
      * This should be called when transitioning to TS_REGISTER phase.
+     * Phase 14: Also initializes GraalVM type integration.
      */
     public void extendForCapabilityRegistration() {
         PhaseController.getInstance().requirePhase(TapestryPhase.TS_REGISTER);
@@ -824,6 +841,13 @@ public class TypeScriptRuntime {
         
         try {
             LOGGER.info("Extending TypeScript runtime for TS_REGISTER phase (capability registration)");
+            
+            // Phase 14: Initialize type integration if available
+            if (typeRegistry != null && typeIntegration == null) {
+                typeIntegration = new GraalVMTypeIntegration(typeRegistry);
+                typeIntegration.initialize();
+                LOGGER.info("Phase 14 GraalVM type integration initialized");
+            }
             
             // Get existing tapestry object
             Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");

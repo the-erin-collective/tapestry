@@ -1,9 +1,11 @@
 package com.tapestry;
 
 import com.tapestry.api.TapestryAPI;
+import com.tapestry.cli.TypeExportCommand;
 import com.tapestry.config.ConfigService;
 import com.tapestry.events.EventBus;
 import com.tapestry.extensions.*;
+import com.tapestry.extensions.types.ExtensionTypeRegistry;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
@@ -60,6 +62,7 @@ public class TapestryMod implements ModInitializer {
     
     // Phase 3: Extension validation
     private static ExtensionValidationResult validationResult;
+    private static ExtensionValidator validator;
     
     @Override
     public void onInitialize() {
@@ -283,7 +286,7 @@ public class TapestryMod implements ModInitializer {
             
             // Create validator with current Tapestry version
             var currentVersion = Version.parse("0.3.0"); // TODO: Get from build config
-            var validator = new ExtensionValidator(currentVersion, policy);
+            validator = new ExtensionValidator(currentVersion, policy);
             
             // Validate extensions
             validationResult = validator.validate(providers);
@@ -353,8 +356,11 @@ public class TapestryMod implements ModInitializer {
         LOGGER.info("=== TS_LOAD PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
         
+        // Phase 14: Get type registry for CLI and TypeScript integration
+        var typeRegistry = validator.getTypeRegistry();
+        
         // Initialize TypeScript runtime with mod loading capabilities
-        tsRuntime.initializeForModLoading(apiTree, modRegistry, tsHookRegistry);
+        tsRuntime.initializeForModLoading(apiTree, modRegistry, tsHookRegistry, typeRegistry);
         
         // Discover all TypeScript mod files
         List<DiscoveredMod> discoveredMods;
@@ -731,5 +737,52 @@ public class TapestryMod implements ModInitializer {
         }
         
         LOGGER.info("Tapestry shutdown complete");
+    }
+    
+    /**
+     * CLI command for exporting type definitions.
+     * Phase 14: Generates physical .d.ts files for IDE support.
+     * 
+     * @param outputDir Output directory path (optional, defaults to .tapestry/types)
+     * @param validate Whether to validate registry before export
+     * @param dryRun Whether to perform dry run (no files written)
+     * @return Exit code (0 = success, 1 = error)
+     */
+    public static int exportTypes(String outputDir, boolean validate, boolean dryRun) {
+        LOGGER.info("Phase 14 CLI: export-types command");
+        
+        try {
+            // Create a minimal validator to get type registry
+            var currentVersion = Version.parse("0.3.0"); // TODO: Get from build config
+            var policy = new ValidationPolicy(false, true);
+            var validator = new ExtensionValidator(currentVersion, policy);
+            var typeRegistry = validator.getTypeRegistry();
+            
+            // Create export command
+            var exportCommand = new TypeExportCommand(typeRegistry, outputDir, validate, dryRun);
+            
+            // Validate workspace invariant
+            if (!exportCommand.validateWorkspaceInvariant()) {
+                LOGGER.error("Workspace invariant validation failed");
+                return 1;
+            }
+            
+            // Print memory usage
+            exportCommand.printMemoryUsage();
+            
+            // Execute export
+            int result = exportCommand.call();
+            
+            // Generate tsconfig snippet
+            if (result == 0) {
+                exportCommand.generateTsconfigSnippet();
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            LOGGER.error("Type export command failed", e);
+            return 1;
+        }
     }
 }
