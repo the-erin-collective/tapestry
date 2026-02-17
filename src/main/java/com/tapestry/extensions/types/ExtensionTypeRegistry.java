@@ -101,6 +101,50 @@ public class ExtensionTypeRegistry {
     }
     
     /**
+     * Check if an extension has type exports (alias for hasTypeModule).
+     * 
+     * @param extensionId The extension ID
+     * @return true if the extension exports types
+     */
+    public boolean hasTypeExports(String extensionId) {
+        return hasTypeModule(extensionId);
+    }
+    
+    /**
+     * Check if a specific type is exported by an extension.
+     * 
+     * @param extensionId The extension ID
+     * @param typeName The type name
+     * @return true if the type is exported
+     */
+    public boolean hasTypeExport(String extensionId, String typeName) {
+        TypeModule module = typeModules.get(extensionId);
+        if (module == null) {
+            return false;
+        }
+        
+        // Simple check: if module exists, assume it exports the type
+        // In a full implementation, this would parse the .d.ts content
+        return module.dtsSource().contains("export") && 
+               module.dtsSource().contains(typeName);
+    }
+    
+    /**
+     * Check if an extension is a type dependency of another.
+     * This is a simplified implementation - in full Phase 14, this would
+     * check the typeImports field in the extension descriptor.
+     * 
+     * @param importingExtension The extension doing the importing
+     * @param targetExtension The extension being imported
+     * @return true if target is a type dependency
+     */
+    public boolean isTypeDependency(String importingExtension, String targetExtension) {
+        // Simplified implementation - assume all required dependencies are also type dependencies
+        // In full Phase 14, this would check descriptor.typeImports()
+        return true; // Placeholder for now
+    }
+    
+    /**
      * Get the current memory footprint estimate.
      * 
      * @return Estimated memory usage in bytes

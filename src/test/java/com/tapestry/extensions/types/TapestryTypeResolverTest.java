@@ -3,6 +3,8 @@ package com.tapestry.extensions.types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -25,7 +27,7 @@ public class TapestryTypeResolverTest {
         String extensionId = "test_extension";
         typeRegistry.storeTypeModule(extensionId, "export interface Test {}");
         resolver.setCurrentExtension("importer");
-        resolver.authorizeTypeImports("importer", List.of(extensionId));
+        resolver.authorizeTypeImports("importer", Arrays.asList(extensionId));
         
         // When
         String result = resolver.resolveModule("@tapestry/" + extensionId, "type");
@@ -40,7 +42,7 @@ public class TapestryTypeResolverTest {
         String extensionId = "test_extension";
         typeRegistry.storeTypeModule(extensionId, "export interface Test {}");
         resolver.setCurrentExtension("importer");
-        resolver.authorizeTypeImports("importer", List.of(extensionId));
+        resolver.authorizeTypeImports("importer", Arrays.asList(extensionId));
         
         // When & Then
         var exception = assertThrows(
@@ -106,7 +108,7 @@ public class TapestryTypeResolverTest {
         String extensionId = "test_extension";
         // Don't store any type module for this extension
         resolver.setCurrentExtension("importer");
-        resolver.authorizeTypeImports("importer", List.of(extensionId));
+        resolver.authorizeTypeImports("importer", Arrays.asList(extensionId));
         
         // When & Then
         var exception = assertThrows(
@@ -140,7 +142,7 @@ public class TapestryTypeResolverTest {
         resolver.setCurrentExtension("importer");
         
         // When
-        resolver.authorizeTypeImports("importer", List.of(extensionId, "another_extension"));
+        resolver.authorizeTypeImports("importer", Arrays.asList(extensionId, "another_extension"));
         
         // Then
         // We can't directly test authorization since it's internal,
@@ -188,8 +190,8 @@ public class TapestryTypeResolverTest {
     @Test
     void testGetMemoryUsage() {
         // Given
-        resolver.authorizeTypeImports("ext1", List.of("target1", "target2"));
-        resolver.authorizeTypeImports("ext2", List.of("target3"));
+        resolver.authorizeTypeImports("ext1", Arrays.asList("target1", "target2"));
+        resolver.authorizeTypeImports("ext2", Arrays.asList("target3"));
         
         // When
         long memoryUsage = resolver.getMemoryUsage();
@@ -204,8 +206,8 @@ public class TapestryTypeResolverTest {
     @Test
     void testClearAuthorizations() {
         // Given
-        resolver.authorizeTypeImports("ext1", List.of("target1"));
-        resolver.authorizeTypeImports("ext2", List.of("target2"));
+        resolver.authorizeTypeImports("ext1", Arrays.asList("target1"));
+        resolver.authorizeTypeImports("ext2", Arrays.asList("target2"));
         
         // When
         resolver.clearAuthorizations();

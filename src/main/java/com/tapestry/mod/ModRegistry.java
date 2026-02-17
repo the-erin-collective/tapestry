@@ -125,10 +125,20 @@ public class ModRegistry {
      * Gets a registered mod descriptor.
      * 
      * @param modId the mod ID
-     * @return the descriptor, or null if not found
+     * @return descriptor, or null if not found
      */
     public ModDescriptor getMod(String modId) {
         return registeredMods.get(modId);
+    }
+    
+    /**
+     * Gets a registered mod descriptor (alias for getMod).
+     * 
+     * @param modId the mod ID
+     * @return descriptor, or null if not found
+     */
+    public ModDescriptor getModDescriptor(String modId) {
+        return getMod(modId);
     }
     
     /**
@@ -138,6 +148,15 @@ public class ModRegistry {
      */
     public Map<String, ModDescriptor> getAllMods() {
         return Collections.unmodifiableMap(registeredMods);
+    }
+    
+    /**
+     * Gets all registered mod descriptors (alias for getAllMods).
+     * 
+     * @return immutable collection of mod descriptors
+     */
+    public Collection<ModDescriptor> getAllModDescriptors() {
+        return Collections.unmodifiableCollection(registeredMods.values());
     }
     
     /**

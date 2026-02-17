@@ -89,7 +89,13 @@ public enum TapestryPhase {
      * Overlay registration and rendering is allowed.
      * This phase is client-side only.
      */
-    CLIENT_PRESENTATION_READY;
+    CLIENT_PRESENTATION_READY,
+    
+    /**
+     * Host failed irrecoverably during boot.
+     * Terminal state - no further transitions allowed.
+     */
+    FAILED;
     
     /**
      * Returns true if this phase comes after the given phase.

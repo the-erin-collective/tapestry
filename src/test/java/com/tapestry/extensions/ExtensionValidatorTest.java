@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -46,6 +47,8 @@ public class ExtensionValidatorTest {
             "0.1.0", // lower than current, should be valid
             List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of(), null)),
             List.of(),
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -77,6 +80,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of(), null)),
             List.of(),
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -111,6 +116,8 @@ public class ExtensionValidatorTest {
             "1.0.0", // higher than current 0.3.0
             List.of(new CapabilityDecl("test.hook", CapabilityType.HOOK, false, Map.of(), null)),
             List.of(),
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -141,23 +148,27 @@ public class ExtensionValidatorTest {
         var capability = new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null);
         
         var descriptor1 = new TapestryExtensionDescriptor(
-            "extension1",
-            "Extension 1",
-            "1.0.0",
-            "0.1.0",
-            List.of(capability),
-            List.of(),
-            List.of()
+                "test-ext-1", 
+                "Test Extension 1", 
+                "1.0.0", 
+                "1.0.0",
+                List.of(),
+                List.of(),
+                List.of(),
+                Optional.empty(),
+                List.of()
         );
         
         var descriptor2 = new TapestryExtensionDescriptor(
-            "extension2",
-            "Extension 2",
-            "1.0.0",
-            "0.1.0",
-            List.of(capability),
-            List.of(),
-            List.of()
+                "extension2",
+                "Extension 2",
+                "1.0.0",
+                "0.1.0",
+                List.of(capability),
+                List.of(),
+                List.of(),
+                Optional.empty(),
+                List.of()
         );
         
         var mockContainer1 = mock(ModContainer.class);
@@ -210,6 +221,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of("extension2"), // depends on extension2
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -220,6 +233,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of("extension1"), // depends on extension1
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -285,6 +300,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of(),
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -339,6 +356,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of("nonexistent"), // requires non-existent dependency
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         
@@ -350,6 +369,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test2.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of(),
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         

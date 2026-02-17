@@ -1,10 +1,13 @@
 package com.tapestry.typescript;
 
-import com.tapestry.Version;
+import com.tapestry.extensions.Version;
 import com.tapestry.config.ConfigService;
 import com.tapestry.events.EventBus;
 import com.tapestry.extensions.types.GraalVMTypeIntegration;
 import com.tapestry.extensions.types.ExtensionTypeRegistry;
+import com.tapestry.extensions.ExtensionLifecycleManager;
+import com.tapestry.extensions.ExtensionState;
+import com.tapestry.extensions.LifecycleViolationException;
 import com.tapestry.hooks.HookRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
@@ -22,10 +25,10 @@ import com.tapestry.mod.ModActivationException;
 import com.tapestry.performance.PerformanceMonitor;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.proxy.ProxyObject;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
-import org.graalvm.polyglot.proxy.ProxyObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +57,9 @@ public class TypeScriptRuntime {
     // Phase 14: Type integration for cross-mod type contracts
     private static GraalVMTypeIntegration typeIntegration;
     private static ExtensionTypeRegistry typeRegistry;
+    
+    // Phase 15: Extension lifecycle management
+    private static ExtensionLifecycleManager lifecycleManager;
     
     private static Context jsContext;
     private static boolean initialized = false;
@@ -227,7 +233,7 @@ public class TypeScriptRuntime {
                 .allowHostAccess(HostAccess.NONE)
                 .allowHostClassLookup(s -> false)
                 .allowIO(false)
-                .fileSystem(typeIntegration != null ? typeIntegration.getFileSystem() : null)
+                .fileSystem(null)
                 .build();
             
             // Build tapestry object with mod.define + extension APIs
@@ -692,25 +698,42 @@ public class TypeScriptRuntime {
             Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
             
             // Create client namespace if it doesn't exist
-                EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
-                if (eventBus != null) {
-                    ModEventApi modEventApi = new ModEventApi(eventBus);
-                    modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
-                    modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
-                    modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
-                }
-                
-                // Add Phase 12 state API to mod namespace
-                if (eventBus != null) {
-                    com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
-                    modValue.putMember("state", stateFactory.createStateNamespace());
-                }
-                
-                // Add Phase 13 capability API to mod namespace
-                if (eventBus != null) {
-                    com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
-                    modValue.putMember("capability", capabilityApi.createRuntimeCapabilityNamespace());
-                }
+            Value clientValue;
+            if (tapestryValue.hasMember("client")) {
+                clientValue = tapestryValue.getMember("client");
+            } else {
+                clientValue = jsContext.asValue(ProxyObject.fromMap(new HashMap<>()));
+                tapestryValue.putMember("client", clientValue);
+            }
+            
+            // Create mod namespace in client if it doesn't exist
+            Value modValue;
+            if (clientValue.hasMember("mod")) {
+                modValue = clientValue.getMember("mod");
+            } else {
+                modValue = jsContext.asValue(ProxyObject.fromMap(new HashMap<>()));
+                clientValue.putMember("mod", modValue);
+            }
+            
+            // Add Phase 11 event API to mod namespace
+            EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
+            if (eventBus != null) {
+                ModEventApi modEventApi = new ModEventApi(eventBus);
+                modValue.putMember("on", modEventApi.createModEventApi().getMember("on"));
+                modValue.putMember("emit", modEventApi.createModEventApi().getMember("emit"));
+                modValue.putMember("off", modEventApi.createModEventApi().getMember("off"));
+            }
+            
+            // Add Phase 12 state API to mod namespace
+            if (eventBus != null) {
+                com.tapestry.typescript.StateFactory stateFactory = new com.tapestry.typescript.StateFactory(eventBus);
+                modValue.putMember("state", stateFactory.createStateNamespace());
+            }
+            
+            // Add Phase 13 capability API to mod namespace
+            if (eventBus != null) {
+                com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
+                modValue.putMember("capability", capabilityApi.createRuntimeCapabilityNamespace());
             }
             
             // Initialize overlay renderer
@@ -884,11 +907,25 @@ public class TypeScriptRuntime {
         try {
             LOGGER.info("Extending TypeScript runtime for TS_ACTIVATE phase");
             
-            // Get mod registry and validate dependencies
+            // Get mod registry and create lifecycle manager
             ModRegistry modRegistry = ModRegistry.getInstance();
+            
+            // Phase 15: Create lifecycle manager to wrap mod registry
+            if (lifecycleManager == null) {
+                lifecycleManager = ExtensionLifecycleManager.create(modRegistry);
+                LOGGER.info("Phase 15: ExtensionLifecycleManager created");
+            }
+            
             modRegistry.validateDependencies();
             List<ModDescriptor> activationOrder = modRegistry.buildActivationOrder();
             modRegistry.beginActivation();
+            
+            // Phase 15: Initialize all extensions to DISCOVERED state
+            Set<String> extensionIds = new HashSet<>();
+            for (ModDescriptor mod : activationOrder) {
+                extensionIds.add(mod.getId());
+            }
+            lifecycleManager.initializeDiscoveredExtensions(extensionIds);
             
             // Phase 14: Authorize type imports for all mods
             if (typeIntegration != null) {
@@ -898,7 +935,7 @@ public class TypeScriptRuntime {
                     // For now, we'll authorize based on mod dependencies
                     var typeResolver = typeIntegration.getTypeResolver();
                     // TODO: Wire with actual extension typeImports data
-                    LOGGER.debug("Phase 14: Would authorize type imports for mod: {}", mod.id());
+                    LOGGER.debug("Phase 14: Would authorize type imports for mod: {}", mod.getId());
                 }
             }
             
@@ -1049,24 +1086,39 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Activates all mods in the specified order.
+     * Activates all mods in the specified order with Phase 15 lifecycle management.
      */
     private void activateMods(List<ModDescriptor> activationOrder) {
-        LOGGER.info("Activating {} mods in dependency order", activationOrder.size());
+        LOGGER.info("Activating {} mods in dependency order with Phase 15 lifecycle", activationOrder.size());
         
         PerformanceMonitor performanceMonitor = PerformanceMonitor.getInstance();
         
         for (ModDescriptor mod : activationOrder) {
-            PerformanceMonitor.ActivationTimer timer = performanceMonitor.startModActivationTiming(mod.getId());
+            String modId = mod.getId();
+            PerformanceMonitor.ActivationTimer timer = performanceMonitor.startModActivationTiming(modId);
             
             try {
-                LOGGER.debug("Activating mod: {}", mod.getId());
+                LOGGER.debug("Phase 15: Activating mod: {}", modId);
                 
+                // Phase 15: Transition to VALIDATED state (already validated, just formalizing)
+                lifecycleManager.transitionState(modId, ExtensionState.VALIDATED);
+                
+                // Phase 15: Transition to TYPE_INITIALIZED state (Phase 14 already done)
+                lifecycleManager.transitionState(modId, ExtensionState.TYPE_INITIALIZED);
+                
+                // Phase 15: Transition to FROZEN state (registries sealed)
+                lifecycleManager.transitionState(modId, ExtensionState.FROZEN);
+                
+                // Phase 15: Transition to LOADING state (runtime execution)
+                lifecycleManager.transitionState(modId, ExtensionState.LOADING);
+                
+                // Existing mod activation logic
                 mod.setState(ModDescriptor.ModState.ACTIVATING);
                 
                 if (mod.hasActivateFunction()) {
-                    setExecutionContext(mod.getId(), ExecutionContextMode.ON_LOAD, mod.getSourcePath());
+                    setExecutionContext(modId, ExecutionContextMode.ON_LOAD, mod.getSourcePath());
                     try {
+                        // Phase 15: Execute with exception handling
                         mod.getActivateFunction().executeVoid();
                     } finally {
                         clearExecutionContext();
@@ -1074,19 +1126,48 @@ public class TypeScriptRuntime {
                 }
                 
                 mod.setState(ModDescriptor.ModState.ACTIVE);
+                
+                // Phase 15: Transition to READY state (successful execution)
+                lifecycleManager.transitionState(modId, ExtensionState.READY);
+                
                 timer.stop(); // This will check performance limits
                 
-                LOGGER.debug("Successfully activated mod: {}", mod.getId());
+                LOGGER.debug("Phase 15: Successfully activated mod: {}", modId);
+                
+            } catch (LifecycleViolationException e) {
+                timer.stop();
+                LOGGER.error("Phase 15: Lifecycle violation for mod {}: {}", modId, e.getMessage());
+                mod.setState(ModDescriptor.ModState.FAILED);
+                lifecycleManager.setFailureReason(modId, e.getMessage());
+                throw new ModActivationException(modId, e);
                 
             } catch (Exception e) {
                 timer.stop(); // Still record the time even if failed
+                
+                // Phase 15: Handle any exception during LOADING
+                LOGGER.error("Phase 15: Exception during activation of mod: {}", modId, e);
+                
+                try {
+                    // Transition to FAILED state
+                    lifecycleManager.transitionState(modId, ExtensionState.FAILED);
+                    lifecycleManager.setFailureReason(modId, e.getClass().getSimpleName() + ": " + e.getMessage());
+                } catch (LifecycleViolationException le) {
+                    // This should not happen - FAILED is always allowed
+                    LOGGER.error("Failed to transition mod {} to FAILED state: {}", modId, le.getMessage());
+                }
+                
                 mod.setState(ModDescriptor.ModState.FAILED);
-                LOGGER.error("Failed to activate mod: {}", mod.getId(), e);
-                throw new ModActivationException(mod.getId(), e);
+                throw new ModActivationException(modId, e);
             }
         }
         
-        LOGGER.info("All mods activated successfully");
+        LOGGER.info("Phase 15: All mods activated with lifecycle management");
+        
+        // Phase 15: Log lifecycle diagnostics
+        var diagnostics = lifecycleManager.getDiagnostics();
+        LOGGER.info("Phase 15: Lifecycle diagnostics - Ready: {}, Failed: {}", 
+            diagnostics.getStateCounts().get(ExtensionState.READY),
+            diagnostics.getStateCounts().get(ExtensionState.FAILED));
     }
     
     /**

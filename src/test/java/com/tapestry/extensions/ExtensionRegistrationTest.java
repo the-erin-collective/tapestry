@@ -112,7 +112,7 @@ class ExtensionRegistrationTest {
     private TapestryExtensionDescriptor createDescriptor(String id, List<String> requires) {
         return new TapestryExtensionDescriptor(
             id, "Test Extension", "1.0.0", "0.1.0",
-            List.of(), requires, List.of()
+            List.of(), requires, List.of(), Optional.empty(), List.of()
         );
     }
     
@@ -120,7 +120,7 @@ class ExtensionRegistrationTest {
         return new TapestryExtensionDescriptor(
             id, "Test Extension", "1.0.0", "0.1.0",
             List.of(new CapabilityDecl("test_api", CapabilityType.API, false, Map.of(), apiPath)),
-            List.of(), List.of()
+            List.of(), List.of(), Optional.empty(), List.of()
         );
     }
 }

@@ -51,6 +51,7 @@ public class ModDescriptor {
     public String getId() { return id; }
     public String getVersion() { return version; }
     public List<String> getDependsOn() { return dependsOn; }
+    public List<String> dependencies() { return dependsOn; } // Alias for compatibility
     public String getEntryPath() { return entryPath; }
     public String getSourcePath() { return sourcePath; }
     public Value getActivateFunction() { return activateFunction; }
