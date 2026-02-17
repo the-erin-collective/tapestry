@@ -273,6 +273,8 @@ public class ExtensionValidatorTest {
             "0.1.0",
             List.of(new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null)),
             List.of(),
+            List.of(),
+            Optional.empty(),
             List.of()
         );
         

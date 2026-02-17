@@ -167,13 +167,11 @@ public class TapestryTypeResolver {
     private boolean isAuthorizedImport(String targetExtensionId) {
         String currentExt = getCurrentExtensionId();
         if (currentExt == null) {
-            LOGGER.warn("No current extension context set for type resolution");
             return false;
         }
         
-        // For now, we'll check if the target exists in the type registry
-        // In a full implementation, this would check against the extension's typeImports list
-        return typeRegistry.hasTypeModule(targetExtensionId);
+        // Critical fix: Use explicit authorization instead of just checking if target exports types
+        return isExplicitlyAuthorized(currentExt, targetExtensionId);
     }
     
     /**

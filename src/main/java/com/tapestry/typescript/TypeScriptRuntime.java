@@ -1,5 +1,6 @@
 package com.tapestry.typescript;
 
+import com.tapestry.Version;
 import com.tapestry.config.ConfigService;
 import com.tapestry.events.EventBus;
 import com.tapestry.extensions.types.GraalVMTypeIntegration;
@@ -19,7 +20,6 @@ import com.tapestry.mod.ModDescriptor;
 import com.tapestry.mod.ModDiscovery;
 import com.tapestry.mod.ModActivationException;
 import com.tapestry.performance.PerformanceMonitor;
-import com.tapestry.events.EventBus;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;
@@ -29,6 +29,9 @@ import org.graalvm.polyglot.proxy.ProxyObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.InputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -36,8 +39,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
-import java.io.InputStream;
-import java.io.IOException;
 
 /**
  * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
@@ -211,18 +212,22 @@ public class TypeScriptRuntime {
             // Store type registry for Phase 14
             TypeScriptRuntime.typeRegistry = typeRegistry;
             
+            // Initialize Phase 14 type integration if available
+            if (typeRegistry != null && typeIntegration == null) {
+                typeIntegration = new GraalVMTypeIntegration(typeRegistry);
+                typeIntegration.initialize();
+                LOGGER.info("Phase 14 GraalVM type integration initialized");
+            }
+            
             // Initialize the define function
             defineFunction = new TsModDefineFunction(modRegistry);
             
-            // Create GraalVM context with HostAccess for file system access
-            HostAccess hostAccess = HostAccess.newBuilder()
-                .build();
-            
             // Create JavaScript context with HostAccess.NONE for security
             jsContext = Context.newBuilder("js")
-                .allowHostAccess(hostAccess)
+                .allowHostAccess(HostAccess.NONE)
                 .allowHostClassLookup(s -> false)
                 .allowIO(false)
+                .fileSystem(typeIntegration != null ? typeIntegration.getFileSystem() : null)
                 .build();
             
             // Build tapestry object with mod.define + extension APIs
@@ -687,18 +692,6 @@ public class TypeScriptRuntime {
             Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
             
             // Create client namespace if it doesn't exist
-            if (!tapestryValue.hasMember("client")) {
-                Map<String, Object> client = new HashMap<>();
-                tapestryValue.putMember("client", ProxyObject.fromMap(client));
-            }
-            
-            // Add overlay API to client namespace
-            Value clientValue = tapestryValue.getMember("client");
-            clientValue.putMember("overlay", overlayApi.createNamespace());
-            
-            // Add Phase 11 event API to mod namespace during CLIENT_PRESENTATION_READY phase
-            Value modValue = tapestryValue.getMember("mod");
-            if (modValue != null) {
                 EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
                 if (eventBus != null) {
                     ModEventApi modEventApi = new ModEventApi(eventBus);
@@ -752,7 +745,8 @@ public class TypeScriptRuntime {
                 if (inputStream == null) {
                     throw new IOException("Mikel library not found at resource path: " + MIKEL_RESOURCE_PATH);
                 }
-                mikelSource = new String(inputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                byte[] bytes = inputStream.readAllBytes();
+                mikelSource = new String(bytes, StandardCharsets.UTF_8);
             }
             
             // Load the library into the JavaScript context
@@ -895,6 +889,18 @@ public class TypeScriptRuntime {
             modRegistry.validateDependencies();
             List<ModDescriptor> activationOrder = modRegistry.buildActivationOrder();
             modRegistry.beginActivation();
+            
+            // Phase 14: Authorize type imports for all mods
+            if (typeIntegration != null) {
+                for (ModDescriptor mod : activationOrder) {
+                    // Get extension descriptor for this mod
+                    // Note: This would need to be wired up with actual extension data
+                    // For now, we'll authorize based on mod dependencies
+                    var typeResolver = typeIntegration.getTypeResolver();
+                    // TODO: Wire with actual extension typeImports data
+                    LOGGER.debug("Phase 14: Would authorize type imports for mod: {}", mod.id());
+                }
+            }
             
             // Get the existing tapestry object
             Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
