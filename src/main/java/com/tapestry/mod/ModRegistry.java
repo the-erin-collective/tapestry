@@ -48,6 +48,13 @@ public class ModRegistry {
     }
     
     /**
+     * Resets the registry (for testing purposes).
+     */
+    public static void reset() {
+        instance = null;
+    }
+    
+    /**
      * Begins the registration phase. Clears any previous state.
      */
     public void beginRegistration() {

@@ -184,21 +184,24 @@ public class OverlayRegistry {
      * @return the number of active overlays
      */
     public int getActiveOverlayCount() {
-        return (int) overlays.keySet().stream()
-            .filter(id -> !disabledOverlays.contains(id))
+        return (int) overlays.entrySet().stream()
+            .filter(entry -> !disabledOverlays.contains(entry.getKey()))
+            .filter(entry -> entry.getValue().isVisible())
             .count();
     }
     
     /**
      * Clears all overlays (for testing purposes).
      */
-    public void clear() {
-        overlays.clear();
-        modToOverlayIds.clear();
-        registrationOrder.clear();
-        disabledOverlays.clear();
-        nextRegistrationOrder = 0;
-        LOGGER.info("Cleared all overlays from registry");
+    public static void clear() {
+        if (instance != null) {
+            instance.overlays.clear();
+            instance.modToOverlayIds.clear();
+            instance.registrationOrder.clear();
+            instance.disabledOverlays.clear();
+            instance.nextRegistrationOrder = 0;
+            LOGGER.info("Cleared all overlays from registry");
+        }
     }
     
     /**

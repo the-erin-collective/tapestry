@@ -50,10 +50,28 @@ public class ExtensionLifecycleManager {
      * Gets the current state of an extension.
      * 
      * @param extensionId the extension identifier
-     * @return current state, or DISCOVERED if unknown
+     * @return current state
+     * @throws IllegalArgumentException if extension is unknown
      */
     public ExtensionState getExtensionState(String extensionId) {
-        return extensionStates.getOrDefault(extensionId, ExtensionState.DISCOVERED);
+        ExtensionState state = extensionStates.get(extensionId);
+        if (state == null) {
+            throw new IllegalArgumentException("Unknown extension: " + extensionId);
+        }
+        return state;
+    }
+    
+    /**
+     * Atomically transitions an extension to FAILED state with a reason.
+     * This is the only way to set failure reasons - ensures determinism.
+     * 
+     * @param extensionId the extension identifier
+     * @param reason the failure reason
+     * @throws LifecycleViolationException if transition is invalid
+     */
+    public void transitionToFailed(String extensionId, String reason) throws LifecycleViolationException {
+        transitionState(extensionId, ExtensionState.FAILED);
+        failureReasons.put(extensionId, reason);
     }
     
     /**
@@ -95,14 +113,18 @@ public class ExtensionLifecycleManager {
      * @return true if transition is allowed
      */
     private boolean isValidTransition(ExtensionState from, ExtensionState to) {
-        // ANY → FAILED is always allowed
+        // ANY → FAILED is always allowed (except from FAILED which is handled below)
         if (to == ExtensionState.FAILED) {
-            return true;
+            return from != ExtensionState.FAILED;
         }
         
-        // Terminal states cannot transition
+        // Terminal states cannot transition (except to FAILED which is handled above)
         if (from == ExtensionState.FAILED || from == ExtensionState.READY) {
             return false;
+        }
+        
+        if (from == to) {
+            return true;
         }
         
         // Valid sequential transitions
@@ -167,8 +189,7 @@ public class ExtensionLifecycleManager {
         Set<String> dependents = getDependents(extensionId);
         for (String dependent : dependents) {
             try {
-                transitionState(dependent, ExtensionState.FAILED);
-                failureReasons.put(dependent, 
+                transitionToFailed(dependent, 
                     String.format("Dependency '%s' failed", extensionId));
             } catch (LifecycleViolationException e) {
                 // This should not happen - FAILED is always allowed
@@ -313,5 +334,14 @@ public class ExtensionLifecycleManager {
         public Map<String, String> getFailureReasons() {
             return new HashMap<>(failureReasons);
         }
+    }
+    
+    /**
+     * Clears all extension states (for testing purposes).
+     */
+    public void clearExtensionStates() {
+        extensionStates.clear();
+        failureReasons.clear();
+        LOGGER.debug("Extension states cleared");
     }
 }

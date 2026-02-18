@@ -222,6 +222,8 @@ public class ExtensionValidator {
             TreeMap<String, ValidatedExtension> enabled,
             List<RejectedExtension> rejected) {
         
+        List<String> toRemove = new ArrayList<>();
+        
         for (var entry : enabled.entrySet()) {
             String id = entry.getKey();
             var extension = entry.getValue();
@@ -237,7 +239,7 @@ public class ExtensionValidator {
                                 Severity.ERROR, "MISSING_DEPENDENCY",
                                 "Missing dependency: " + dep,
                                 id))));
-                        enabled.remove(id);
+                        toRemove.add(id);
                         break;
                     }
                     resolved.add(dep);
@@ -254,10 +256,15 @@ public class ExtensionValidator {
                 enabled.put(id, extension);
             }
         }
+        
+        // Remove extensions with missing dependencies
+        for (String id : toRemove) {
+            enabled.remove(id);
+        }
     }
     
     /**
-     * Rule Group F: Check for dependency cycles.
+     * Validates dependency cycles.
      */
     private void validateDependencyCycles(
             TreeMap<String, ValidatedExtension> enabled,
