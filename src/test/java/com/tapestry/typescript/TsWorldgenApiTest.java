@@ -31,6 +31,8 @@ public class TsWorldgenApiTest {
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
         
         hookRegistry = new HookRegistry();

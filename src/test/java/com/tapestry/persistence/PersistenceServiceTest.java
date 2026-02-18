@@ -35,6 +35,8 @@ public class PersistenceServiceTest {
         PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
         PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
         PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
         
@@ -142,8 +144,11 @@ public class PersistenceServiceTest {
             PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
             PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
             PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
+            PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
+            PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
             PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
             PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
+            PhaseController.getInstance().advanceTo(TapestryPhase.EVENT);
             PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
         });
         

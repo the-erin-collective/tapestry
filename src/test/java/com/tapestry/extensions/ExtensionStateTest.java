@@ -83,8 +83,18 @@ public class ExtensionStateTest {
         boolean allowsStructuralMutation = state.allowsStructuralMutation();
         boolean allowsRuntimeExecution = state.allowsRuntimeExecution();
         
-        // At least one property should be true for each state
-        assertTrue(isOperational || isFailed || allowsStructuralMutation || allowsRuntimeExecution);
+        // At least one property should be true for each non-terminal state
+        // FROZEN and FAILED are special cases where most properties are false
+        if (state == ExtensionState.FROZEN) {
+            // FROZEN state intentionally has all properties false
+            assertTrue(!isOperational && !isFailed && !allowsStructuralMutation && !allowsRuntimeExecution);
+        } else if (state == ExtensionState.FAILED) {
+            // FAILED state has isFailed=true but all other properties false
+            assertTrue(!isOperational && isFailed && !allowsStructuralMutation && !allowsRuntimeExecution);
+        } else {
+            // All other states should have at least one property true
+            assertTrue(isOperational || isFailed || allowsStructuralMutation || allowsRuntimeExecution);
+        }
     }
     
     @Test

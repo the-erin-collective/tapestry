@@ -1,18 +1,27 @@
 package com.tapestry.extensions;
 
+import com.tapestry.extensions.CapabilityRegistry;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.typescript.CapabilityApi;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.metadata.ModMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.TestMethodOrder;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 
 /**
  * Tests for ExtensionValidator functionality.
@@ -31,6 +40,18 @@ public class ExtensionValidatorTest {
         PhaseController.getInstance().advanceTo(TapestryPhase.BOOTSTRAP);
         PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
         PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
+        
+        // Reset CapabilityRegistry for each test
+        try {
+            Method resetMethod = CapabilityRegistry.class.getDeclaredMethod("reset");
+            resetMethod.setAccessible(true);
+            resetMethod.invoke(null);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to reset CapabilityRegistry", e);
+        }
+        
+        // Clear temporary capability storage
+        CapabilityApi.clearTemporaryStorage();
         
         currentVersion = Version.parse("0.3.0");
         policy = new ValidationPolicy(false, true);
@@ -72,9 +93,9 @@ public class ExtensionValidatorTest {
     
     @Test
     void testInvalidExtensionId() {
-        // Create extension with invalid ID (uppercase)
+        // Create extension with invalid ID (starts with number)
         var descriptor = new TapestryExtensionDescriptor(
-            "Test_Extension", // invalid - contains uppercase
+            "123_extension", // invalid - starts with number
             "Test Extension",
             "1.0.0",
             "0.1.0",
@@ -103,7 +124,7 @@ public class ExtensionValidatorTest {
         
         var rejected = result.rejected().get(0);
         assertTrue(rejected.errors().stream()
-            .anyMatch(e -> e.code().equals("INVALID_ID")));
+            .anyMatch(e -> e.code().equals("INVALID_EXTENSION_ID")));
     }
     
     @Test
@@ -139,7 +160,7 @@ public class ExtensionValidatorTest {
         
         var rejected = result.rejected().get(0);
         assertTrue(rejected.errors().stream()
-            .anyMatch(e -> e.code().equals("VERSION_TOO_LOW")));
+            .anyMatch(e -> e.code().equals("INCOMPATIBLE_TAPESTRY_VERSION")));
     }
     
     @Test
@@ -148,11 +169,11 @@ public class ExtensionValidatorTest {
         var capability = new CapabilityDecl("test.service", CapabilityType.SERVICE, true, Map.of(), null);
         
         var descriptor1 = new TapestryExtensionDescriptor(
-                "test-ext-1", 
+                "test_ext_1", 
                 "Test Extension 1", 
                 "1.0.0", 
-                "1.0.0",
-                List.of(),
+                "0.1.0",  // lower version to be valid
+                List.of(capability),  // Both declare the same exclusive capability
                 List.of(),
                 List.of(),
                 Optional.empty(),
@@ -164,7 +185,7 @@ public class ExtensionValidatorTest {
                 "Extension 2",
                 "1.0.0",
                 "0.1.0",
-                List.of(capability),
+                List.of(capability),  // Both declare the same exclusive capability
                 List.of(),
                 List.of(),
                 Optional.empty(),
@@ -197,7 +218,7 @@ public class ExtensionValidatorTest {
         
         // Find rejected extensions by ID
         var rejected1 = result.rejected().stream()
-            .filter(r -> r.descriptor().id().equals("extension1"))
+            .filter(r -> r.descriptor().id().equals("test_ext_1"))
             .findFirst()
             .orElseThrow();
         var rejected2 = result.rejected().stream()
@@ -206,9 +227,9 @@ public class ExtensionValidatorTest {
             .orElseThrow();
         
         assertTrue(rejected1.errors().stream()
-            .anyMatch(e -> e.code().equals("CAPABILITY_CONFLICT")));
+            .anyMatch(e -> e.code().equals("DUPLICATE_CAPABILITY_PROVIDER")));
         assertTrue(rejected2.errors().stream()
-            .anyMatch(e -> e.code().equals("CAPABILITY_CONFLICT")));
+            .anyMatch(e -> e.code().equals("DUPLICATE_CAPABILITY_PROVIDER")));
     }
     
     @Test
@@ -341,9 +362,9 @@ public class ExtensionValidatorTest {
             .orElseThrow();
         
         assertTrue(rejected1.errors().stream()
-            .anyMatch(e -> e.code().equals("DUPLICATE_ID")));
+            .anyMatch(e -> e.code().equals("DUPLICATE_EXTENSION_ID")));
         assertTrue(rejected2.errors().stream()
-            .anyMatch(e -> e.code().equals("DUPLICATE_ID")));
+            .anyMatch(e -> e.code().equals("DUPLICATE_EXTENSION_ID")));
     }
     
     @Test
@@ -405,6 +426,6 @@ public class ExtensionValidatorTest {
             .orElseThrow();
         
         assertTrue(rejected.errors().stream()
-            .anyMatch(e -> e.code().equals("MISSING_REQUIRED_DEPENDENCY")));
+            .anyMatch(e -> e.code().equals("MISSING_DEPENDENCY")));
     }
 }

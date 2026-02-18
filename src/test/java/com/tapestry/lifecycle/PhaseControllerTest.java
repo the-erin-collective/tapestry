@@ -44,11 +44,20 @@ public class PhaseControllerTest {
         assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.TS_LOAD));
         assertEquals(TapestryPhase.TS_LOAD, controller.getCurrentPhase());
         
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.TS_REGISTER));
+        assertEquals(TapestryPhase.TS_REGISTER, controller.getCurrentPhase());
+        
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.TS_ACTIVATE));
+        assertEquals(TapestryPhase.TS_ACTIVATE, controller.getCurrentPhase());
+        
         assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.TS_READY));
         assertEquals(TapestryPhase.TS_READY, controller.getCurrentPhase());
         
         assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.PERSISTENCE_READY));
         assertEquals(TapestryPhase.PERSISTENCE_READY, controller.getCurrentPhase());
+        
+        assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.EVENT));
+        assertEquals(TapestryPhase.EVENT, controller.getCurrentPhase());
         
         assertDoesNotThrow(() -> controller.advanceTo(TapestryPhase.RUNTIME));
         assertEquals(TapestryPhase.RUNTIME, controller.getCurrentPhase());
@@ -127,8 +136,11 @@ public class PhaseControllerTest {
         controller.advanceTo(TapestryPhase.REGISTRATION);
         controller.advanceTo(TapestryPhase.FREEZE);
         controller.advanceTo(TapestryPhase.TS_LOAD);
+        controller.advanceTo(TapestryPhase.TS_REGISTER);
+        controller.advanceTo(TapestryPhase.TS_ACTIVATE);
         controller.advanceTo(TapestryPhase.TS_READY);
         controller.advanceTo(TapestryPhase.PERSISTENCE_READY);
+        controller.advanceTo(TapestryPhase.EVENT);
         controller.advanceTo(TapestryPhase.RUNTIME);
         
         // Debug: Check current phase

@@ -123,8 +123,11 @@ public class TypeExportCommandTest {
     void testValidateWorkspaceInvariant_OutputDirNotWritable() throws Exception {
         // Given
         typeRegistry.freeze();
-        // Use a non-existent path that can't be created
-        Path invalidDir = Path.of("/invalid/path/that/cannot/be/created");
+        
+        // Use a directory that exists but make it non-writable by using a file instead of directory
+        // On Windows, we can create a file with the same name as the intended directory
+        Path invalidDir = tempDir.resolve("file_not_directory");
+        java.nio.file.Files.writeString(invalidDir, "This is a file, not a directory");
         
         TypeExportCommand command = new TypeExportCommand(typeRegistry, invalidDir.toString(), false, false);
         
