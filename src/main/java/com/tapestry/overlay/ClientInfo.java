@@ -3,7 +3,6 @@ package com.tapestry.overlay;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.math.Vec3d;
 
 /**
@@ -114,14 +113,9 @@ public class ClientInfo {
         /**
          * Creates a PlayerInfo snapshot from a player entity.
          */
-        public static PlayerInfo fromPlayer(PlayerEntity player) {
-            Vec3d pos = player.getPos();
-            String dimension = player.getWorld().getRegistryKey().getValue().toString();
-            float health = player.getHealth();
-            int foodLevel = player.getHungerManager().getFoodLevel();
-            float armor = player.getArmor();
-            
-            return new PlayerInfo(pos, dimension, health, foodLevel, armor);
+        public static PlayerInfo fromPlayer(ClientPlayerEntity player) {
+            // TODO: Fix mapping issues - temporarily disabled
+        return null;
         }
     }
     

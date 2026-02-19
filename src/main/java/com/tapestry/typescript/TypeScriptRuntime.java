@@ -1220,6 +1220,34 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Extends tapestry object for Phase 16 RPC system.
+     * This should be called when RPC system is initialized.
+     */
+    public void extendForRpcPhase() {
+        PhaseController.getInstance().requirePhase(TapestryPhase.RUNTIME);
+        
+        if (!initialized) {
+            throw new IllegalStateException("TypeScript runtime not initialized");
+        }
+        
+        try {
+            // Create RPC namespace
+            Value rpcNamespace = Context.getCurrent().asValue(RpcApi.createNamespace());
+            // Create env namespace for side awareness
+            Value envNamespace = Context.getCurrent().asValue(EnvApi.createNamespace());
+            // Inject into global tapestry object
+            Value tapestry = jsContext.getBindings("js").getMember("tapestry");
+            tapestry.putMember("rpc", rpcNamespace);
+            tapestry.putMember("env", envNamespace);
+            
+            LOGGER.info("Phase 16 RPC API extensions loaded");
+        } catch (Exception e) {
+            LOGGER.error("Failed to extend TypeScript runtime for Phase 16", e);
+            throw new RuntimeException("Phase 16 extension failed", e);
+        }
+    }
+    
+    /**
      * Extends tapestry object for EVENT phase.
      * This should be called when transitioning to EVENT phase.
      */

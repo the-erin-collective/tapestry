@@ -13,15 +13,18 @@
   },
   "license": "MIT",
   "icon": "assets/tapestry/icon.png",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
     "main": [
       "com.tapestry.TapestryMod"
+    ],
+    "client": [
+      "com.tapestry.rpc.client.RpcClientNetworkRegistrar"
     ]
   },
   "depends": {
-    "fabricloader": ">=0.15.0",
-    "minecraft": "~1.20.4",
-    "java": ">=17"
+    "fabricloader": ">=0.15.11",
+    "minecraft": "~1.21.11",
+    "java": ">=21"
   }
 }
