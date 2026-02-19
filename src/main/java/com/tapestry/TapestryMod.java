@@ -33,6 +33,7 @@ import com.tapestry.mod.ModDiscovery;
 import com.tapestry.mod.ModDescriptor;
 import com.tapestry.mod.ModActivationException;
 import com.tapestry.performance.PerformanceMonitor;
+import com.tapestry.rpc.ServerApiRegistry;
 import com.tapestry.rpc.RpcDispatcher;
 import com.tapestry.rpc.HandshakeRegistry;
 import com.tapestry.rpc.HandshakeHandler;
@@ -764,8 +765,11 @@ public class TapestryMod implements ModInitializer {
             // Initialize client-side runtime for singleplayer/integrated server
             rpcClientRuntime = new RpcClientRuntime();
             
-            // Freeze the API registry and create dispatcher
-            rpcDispatcher = rpcApiRegistry.freeze();
+            // Close method registration - security: no more methods can be registered
+            ServerApiRegistry.closeRegistration();
+            
+            // Create secure dispatcher
+            rpcDispatcher = new RpcDispatcher();
             
             // Create handshake handler
             var handshakeHandler = new HandshakeHandler(handshakeRegistry, rpcDispatcher, List.of());

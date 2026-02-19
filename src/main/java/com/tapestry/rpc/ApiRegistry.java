@@ -58,7 +58,7 @@ public class ApiRegistry {
         LOGGER.info("Freezing ApiRegistry with {} methods", mutableTable.size());
         
         // Create immutable dispatcher
-        return new RpcDispatcher(Map.copyOf(mutableTable));
+        return new RpcDispatcher();
     }
     
     /**

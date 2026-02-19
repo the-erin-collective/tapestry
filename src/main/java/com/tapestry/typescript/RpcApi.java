@@ -1,6 +1,7 @@
 package com.tapestry.typescript;
 
-import com.tapestry.rpc.ApiRegistry;
+import com.tapestry.rpc.ServerApiRegistry;
+import com.tapestry.rpc.ServerApiMethod;
 import com.tapestry.rpc.client.RpcClientRuntime;
 import com.tapestry.rpc.client.ClientEventRegistry;
 import org.graalvm.polyglot.Context;
@@ -16,13 +17,11 @@ import java.util.Map;
 /**
  * Phase 16 RPC API for TypeScript mods.
  * Provides defineServerApi, server proxy, emitTo, and clientEvents.
+ * Uses secure ServerApiRegistry for method allowlist.
  */
 public class RpcApi {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(RpcApi.class);
-    
-    // Server-side API registry
-    private static ApiRegistry apiRegistry;
     
     // Client-side runtime
     private static RpcClientRuntime clientRuntime;
@@ -37,10 +36,10 @@ public class RpcApi {
     private static final Map<String, Value> pendingRegistrations = new ConcurrentHashMap<>();
     
     /**
-     * Initializes the RPC API for server-side registration.
+     * initializeForServer - deprecated, no longer needed with secure registry.
      */
-    public static void initializeForServer(ApiRegistry registry) {
-        apiRegistry = registry;
+    public static void initializeForServer(Object registry) {
+        LOGGER.info("Server API initialization - using secure registry");
     }
     
     /**
@@ -138,10 +137,15 @@ public class RpcApi {
             String qualifiedName = modId + ":" + methodName;
             pendingRegistrations.put(qualifiedName, methodFunction);
             
-            // Register with the API registry if available
-            if (apiRegistry != null) {
-                apiRegistry.register(modId, methodName, methodFunction, graalContext);
+            // Register with secure API registry if available
+            if (ServerApiRegistry.hasMethod(qualifiedName)) {
+                LOGGER.warn("Server API method already registered: {}", qualifiedName);
+                continue;
             }
+            
+            // Create ServerApiMethod wrapper
+            ServerApiMethod apiMethod = new ServerApiMethod(methodFunction, graalContext, modId, methodName);
+            ServerApiRegistry.registerMethod(qualifiedName, apiMethod);
             
             LOGGER.debug("Registered server API method: {}", qualifiedName);
         }
