@@ -9,7 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Secure registry for server-side API methods.
- * 
  * Provides method allowlist, namespace isolation, and permission validation.
  * Only explicitly registered methods can be called via RPC.
  */
@@ -19,19 +18,20 @@ public class ServerApiRegistry {
     // Protocol version for handshake validation
     public static final int PROTOCOL_VERSION = 1;
     
-    // Thread-safe method registry
+    // Thread-safe method registry with ownership tracking
     private static final Map<String, ServerApiMethod> methods = new ConcurrentHashMap<>();
+    private static final Map<String, String> methodOwners = new ConcurrentHashMap<>();
     
     // Registration state - only allow registration during boot
     private static volatile boolean registrationOpen = true;
     
     /**
-     * Registers a server API method with allowlist validation.
+     * Registers a server API method with allowlist and ownership validation.
      * 
      * @param methodId Fully qualified method ID (mod:method)
      * @param method Method implementation
      * @throws IllegalStateException if registration is closed
-     * @throws IllegalArgumentException if methodId is invalid
+     * @throws IllegalArgumentException if methodId is invalid or ownership violation
      */
     public static void registerMethod(String methodId, ServerApiMethod method) {
         if (!registrationOpen) {
@@ -42,8 +42,9 @@ public class ServerApiRegistry {
             throw new IllegalArgumentException("Method ID cannot be null or empty");
         }
         
-        if (!methodId.contains(":")) {
-            throw new IllegalArgumentException("Method ID must be in format 'mod:method'");
+        // Validate canonical naming format
+        if (!isValidMethodId(methodId)) {
+            throw new IllegalArgumentException("Invalid method ID format: " + methodId);
         }
         
         String[] parts = methodId.split(":", 2);
@@ -55,6 +56,13 @@ public class ServerApiRegistry {
             throw new IllegalArgumentException("Both mod ID and method name must be non-empty");
         }
         
+        // Enforce ownership: method must be registered by its owner
+        String ownerModId = method.getModId();
+        if (!methodId.startsWith(ownerModId + ":")) {
+            throw new IllegalArgumentException("Namespace violation: method '" + methodId + 
+                                       "' cannot be registered by mod '" + ownerModId + "'");
+        }
+        
         // Check for duplicates
         if (methods.containsKey(methodId)) {
             LOGGER.warn("Method '{}' already registered, skipping", methodId);
@@ -62,7 +70,33 @@ public class ServerApiRegistry {
         }
         
         methods.put(methodId, method);
-        LOGGER.info("Registered server API method: {}", methodId);
+        methodOwners.put(methodId, ownerModId);
+        LOGGER.info("Registered server API method: {} by owner: {}", methodId, ownerModId);
+    }
+    
+    /**
+     * Validates method ID format according to canonical naming rules.
+     */
+    private static boolean isValidMethodId(String methodId) {
+        if (!methodId.contains(":") || methodId.chars().filter(ch -> ch == ':').count() != 1) {
+            return false;
+        }
+        
+        String[] parts = methodId.split(":", 2);
+        String modId = parts[0];
+        String methodName = parts[1];
+        
+        // Validate modid: [a-z0-9_-]+
+        if (!modId.matches("^[a-z0-9_-]+$")) {
+            return false;
+        }
+        
+        // Validate name: [a-zA-Z0-9_/.-]+
+        if (!methodName.matches("^[a-zA-Z0-9_/.-]+$")) {
+            return false;
+        }
+        
+        return true;
     }
     
     /**
@@ -83,6 +117,16 @@ public class ServerApiRegistry {
      */
     public static boolean hasMethod(String methodId) {
         return methods.containsKey(methodId);
+    }
+    
+    /**
+     * Gets the owner mod ID for a method.
+     * 
+     * @param methodId Method ID to look up
+     * @return Owner mod ID if found, null otherwise
+     */
+    public static String getMethodOwner(String methodId) {
+        return methodOwners.get(methodId);
     }
     
     /**
@@ -108,6 +152,7 @@ public class ServerApiRegistry {
      */
     static void clearForTesting() {
         methods.clear();
+        methodOwners.clear();
         registrationOpen = true;
     }
 }
