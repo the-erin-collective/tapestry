@@ -23,8 +23,12 @@ import com.tapestry.mod.ModDescriptor;
 import com.tapestry.mod.ModDiscovery;
 import com.tapestry.mod.ModActivationException;
 import com.tapestry.performance.PerformanceMonitor;
+import com.tapestry.rpc.SafeTapestryBridge;
+import com.tapestry.rpc.client.RpcClientRuntime;
+import com.tapestry.rpc.client.RpcClientFacade;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.EnvironmentAccess;
 import org.graalvm.polyglot.proxy.ProxyObject;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
@@ -228,22 +232,23 @@ public class TypeScriptRuntime {
             // Initialize the define function
             defineFunction = new TsModDefineFunction(modRegistry);
             
-            // Create JavaScript context with HostAccess.NONE for security
+            // Create JavaScript context with Phase 17 hardening
             jsContext = Context.newBuilder("js")
                 .allowHostAccess(HostAccess.NONE)
-                .allowHostClassLookup(s -> false)
+                .allowHostClassLookup(className -> false)
                 .allowIO(false)
+                .allowCreateThread(false)
+                .allowNativeAccess(false)
+                .allowEnvironmentAccess(EnvironmentAccess.NONE)
                 .fileSystem(null)
                 .build();
             
-            // Build tapestry object with mod.define + extension APIs
-            Object bindings = buildTapestryObjectWithExtensions(apiTree);
+            // Phase 17: Inject SafeTapestryBridge instead of full API
+            RpcClientFacade rpcFacade = getRpcClientFacade();
+            SafeTapestryBridge bridge = new SafeTapestryBridge(rpcFacade);
             
-            // Inject bindings into the context
-            Map<String, Object> bindingsMap = (Map<String, Object>) bindings;
-            for (Map.Entry<String, Object> entry : bindingsMap.entrySet()) {
-                jsContext.getBindings("js").putMember(entry.getKey(), entry.getValue());
-            }
+            // Only expose the safe bridge to JavaScript
+            jsContext.getBindings("js").putMember("tapestry", bridge);
             
             // Store API and hookRegistry for later extension in TS_READY
             // We'll extend the tapestry object when we reach TS_READY phase
@@ -257,6 +262,23 @@ public class TypeScriptRuntime {
             LOGGER.error("Failed to initialize TypeScript runtime", e);
             throw new RuntimeException("TypeScript runtime initialization failed", e);
         }
+    }
+    
+    /**
+     * Phase 17: Gets RPC client facade for secure bridge.
+     * Returns null if not available (e.g., server-side).
+     */
+    private RpcClientFacade getRpcClientFacade() {
+        // Try to get existing RPC client runtime
+        try {
+            RpcClientRuntime clientRuntime = RpcClientRuntime.getInstance();
+            if (clientRuntime != null) {
+                return clientRuntime; // Implements RpcClientFacade
+            }
+        } catch (Exception e) {
+            LOGGER.debug("No RPC client runtime available: {}", e.getMessage());
+        }
+        return null;
     }
     
     /**
