@@ -2,6 +2,7 @@ package com.tapestry.rpc;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
@@ -14,12 +15,16 @@ import org.slf4j.LoggerFactory;
 import com.tapestry.networking.RpcCustomPayload;
 
 /**
- * Handles incoming RPC packets on the server side.
- * This is a single entry point for all RPC traffic.
+ * Phase 16.5: Secure RPC packet handler with pre-deserialization limits.
+ * Enforces size limits before JSON parsing to prevent memory bombs.
  */
 public class RpcPacketHandler {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(RpcPacketHandler.class);
+    
+    // Pre-deserialization size limits
+    private static final int MAX_JSON_BYTES = 65536; // 64KB
+    private static final int MAX_JSON_CHARS = 16384; // 16KB characters
     private static final int PROTOCOL_VERSION = 1;
     
     private final RpcServerRuntime rpcServerRuntime;
@@ -31,17 +36,44 @@ public class RpcPacketHandler {
     }
     
     /**
-     * Handle RPC packet from JSON string (used by new registration pattern).
+     * Handle RPC packet from JSON string with security validation.
      */
     public void handle(ServerPlayerEntity player, String json) {
         try {
-            // Decode packet data
-            JsonObject data = JsonParser.parseString(json).getAsJsonObject();
+            // Security: Pre-deserialization size check
+            if (json.length() > MAX_JSON_CHARS) {
+                LOGGER.warn("RPC packet too large from player {}: {} chars", 
+                           player.getName().getString(), json.length());
+                handshakeHandler.sendHandshakeFail(player, "Packet too large");
+                return;
+            }
+            
+            // Parse JSON with error handling
+            JsonObject data;
+            try {
+                data = JsonParser.parseString(json).getAsJsonObject();
+            } catch (JsonParseException e) {
+                LOGGER.warn("Invalid JSON from player {}: {}", 
+                           player.getName().getString(), e.getMessage());
+                handshakeHandler.sendHandshakeFail(player, "Invalid JSON: " + e.getMessage());
+                return;
+            }
             
             // Validate protocol version
             if (!data.has("protocol") || data.get("protocol").getAsInt() != PROTOCOL_VERSION) {
                 LOGGER.warn("Received packet with invalid protocol version from player: {}", player.getName().getString());
                 handshakeHandler.sendHandshakeFail(player, "Protocol mismatch");
+                return;
+            }
+            
+            // Security: Post-deserialization sanitization
+            Object sanitized;
+            try {
+                sanitized = RpcSanitizer.sanitize(data);
+            } catch (RpcValidationException e) {
+                LOGGER.warn("RPC validation failed from player {}: {}", 
+                           player.getName().getString(), e.getMessage());
+                handshakeHandler.sendHandshakeFail(player, "Validation failed: " + e.getMessage());
                 return;
             }
             
