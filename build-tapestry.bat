@@ -1,7 +1,7 @@
 @echo off
 echo Building Tapestry Platform...
 cd tapestry
-call gradlew.bat downloadMikel build
+call gradlew.bat downloadMikel exportTypes
 if %ERRORLEVEL% NEQ 0 (
     echo Tapestry build failed!
     pause

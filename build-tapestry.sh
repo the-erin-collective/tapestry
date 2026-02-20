@@ -2,7 +2,7 @@
 
 echo "Building Tapestry Platform..."
 cd tapestry
-./gradlew downloadMikel build
+./gradlew downloadMikel exportTypes
 if [ $? -ne 0 ]; then
     echo "Tapestry build failed!"
     exit 1

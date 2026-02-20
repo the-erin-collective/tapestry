@@ -1,9 +1,5 @@
 // TypeScript type definitions for Tapestry Platform APIs
-// These definitions cover the APIs used by TWILA and other TypeScript mods
-
-// ============================================================================
-// RAYCASTING API
-// ============================================================================
+// Core types for client-side modding
 
 export interface BlockPos {
   x: number;
@@ -29,10 +25,6 @@ export interface BlockMissResult {
 }
 
 export type RaycastResult = BlockHitResult | BlockMissResult;
-
-// ============================================================================
-// OVERLAY SYSTEM API
-// ============================================================================
 
 export type OverlayAnchor = 
   | "TOP_LEFT"
@@ -65,10 +57,6 @@ export interface OverlayAPI {
   add(fragment: UINode | UINode[]): void;
 }
 
-// ============================================================================
-// SCHEDULER API
-// ============================================================================
-
 export interface SchedulerContext {
   modId: string;
   tick: number;
@@ -83,10 +71,6 @@ export interface SchedulerAPI {
   clearInterval(handle: string): void;
   nextTick(callback: SchedulerCallback): string;
 }
-
-// ============================================================================
-// PLAYER API
-// ============================================================================
 
 export interface PlayerSnapshot {
   uuid: string;
@@ -139,9 +123,16 @@ export interface ClientPlayersAPI {
   getLook(): LookSnapshot | null;
 }
 
-// ============================================================================
-// MOD DEFINITION API
-// ============================================================================
+export interface ModAPI {
+  on?: (event: string, callback: (context: unknown) => void) => void;
+  emit?: (event: string, data: unknown) => void;
+  off?: (event: string, callback?: (context: unknown) => void) => void;
+  state?: {
+    get<T>(key: string): T | null;
+    set<T>(key: string, value: T): void;
+    delete(key: string): void;
+  };
+}
 
 export interface TapestryObject {
   mod: {
@@ -159,11 +150,7 @@ export interface TapestryObject {
     overlay: OverlayAPI;
     /** Client-side players API for single-player mods */
     players: ClientPlayersAPI;
-    mod?: {
-      on?: (event: string, callback: (context: unknown) => void) => void;
-      emit?: (event: string, data: unknown) => void;
-      off?: (event: string, callback?: (context: unknown) => void) => void;
-    };
+    mod?: ModAPI;
   };
   scheduler: SchedulerAPI;
   players: PlayersAPI;
@@ -175,17 +162,8 @@ export interface ModDefinition {
   onEnable?: (tapestry: TapestryObject) => void;
 }
 
-// ============================================================================
-// CONSOLE API (Global)
-// ============================================================================
-
+// Global tapestry object declaration
 declare global {
-  const console: {
-    log: (...args: unknown[]) => void;
-    warn: (...args: unknown[]) => void;
-    error: (...args: unknown[]) => void;
-  };
-
   const tapestry: TapestryObject;
 }
 

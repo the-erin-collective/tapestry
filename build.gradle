@@ -59,6 +59,14 @@ tasks.withType(JavaCompile).configureEach {
     it.options.release = 21
 }
 
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+    }
+}
+
 java {
     withSourcesJar()
     toolchain {
@@ -143,6 +151,45 @@ task downloadMikel {
         } catch (Exception e) {
             delete tempDir
             throw new GradleException("Failed to download and embed Mikel library: ${e.message}", e)
+        }
+    }
+}
+
+task exportTypes {
+    description = 'Copies TypeScript type definitions for distribution'
+    group = 'tapestry'
+    
+    doLast {
+        // Create types directory in build output
+        def typesDir = file("${buildDir}/types")
+        typesDir.mkdirs()
+        
+        // Copy main types.d.ts file
+        def sourceTypes = file('types.d.ts')
+        def targetTypes = file("${typesDir}/index.d.ts")
+        
+        if (sourceTypes.exists()) {
+            copy {
+                from sourceTypes
+                into typesDir
+                rename { 'index.d.ts' }
+            }
+            println "✅ TypeScript types exported to ${targetTypes.absolutePath}"
+        } else {
+            println "⚠️  Source types.d.ts not found at ${sourceTypes.absolutePath}"
+        }
+        
+        // Copy types to JAR resources
+        def resourceTypesDir = file("${buildDir}/resources/main/types")
+        resourceTypesDir.mkdirs()
+        
+        if (sourceTypes.exists()) {
+            copy {
+                from sourceTypes
+                into resourceTypesDir
+                rename { 'tapestry.d.ts' }
+            }
+            println "✅ TypeScript types embedded in JAR resources"
         }
     }
 }
