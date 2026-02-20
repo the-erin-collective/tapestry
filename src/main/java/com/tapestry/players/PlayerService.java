@@ -15,6 +15,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.World;
 import net.minecraft.registry.Registries;
 import net.minecraft.block.BlockState;
@@ -224,7 +225,7 @@ public class PlayerService {
      * @param uuidString player UUID string
      * @param maxDistance maximum raycast distance
      * @param includeFluids whether to include fluids
-     * @return hit result or null if missed
+     * @return hit result map with block info, or null map if missed
      */
     public Object raycastBlock(String uuidString, double maxDistance, boolean includeFluids) {
         // Enforce safety limits
@@ -247,7 +248,37 @@ public class PlayerService {
             player
         );
         
-        return null;
+        // Get the player's world and execute raycast
+        // TODO: Use player's actual dimension instead of overworld
+        ServerWorld world = server.getOverworld();
+        HitResult hitResult = world.raycast(context);
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        if (hitResult.getType() == HitResult.Type.BLOCK) {
+            BlockHitResult blockHit = (BlockHitResult) hitResult;
+            BlockPos pos = blockHit.getBlockPos();
+            BlockState state = world.getBlockState(pos);
+            Identifier blockId = Registries.BLOCK.getId(state.getBlock());
+            
+            result.put("hit", true);
+            
+            Map<String, Object> blockPos = new HashMap<>();
+            blockPos.put("x", pos.getX());
+            blockPos.put("y", pos.getY());
+            blockPos.put("z", pos.getZ());
+            result.put("blockPos", blockPos);
+            
+            result.put("blockId", blockId.toString());
+            result.put("blockName", state.getBlock().getName().getString());
+            
+            Direction side = blockHit.getSide();
+            result.put("side", side.asString());
+        } else {
+            result.put("hit", false);
+        }
+        
+        return result;
     }
     
     /**
