@@ -130,6 +130,15 @@ export interface PlayersAPI {
   raycastBlock(uuid: string, options: RaycastOptions): RaycastResult;
 }
 
+export interface ClientPlayersAPI {
+  /** Client-side raycastBlock - no server required, works in single-player */
+  raycastBlock(options: RaycastOptions): RaycastResult;
+  /** Get local player position */
+  getPosition(): Position | null;
+  /** Get local player look direction */
+  getLook(): LookSnapshot | null;
+}
+
 // ============================================================================
 // MOD DEFINITION API
 // ============================================================================
@@ -148,6 +157,8 @@ export interface TapestryObject {
   };
   client?: {
     overlay: OverlayAPI;
+    /** Client-side players API for single-player mods */
+    players: ClientPlayersAPI;
     mod?: {
       on?: (event: string, callback: (context: unknown) => void) => void;
       emit?: (event: string, data: unknown) => void;

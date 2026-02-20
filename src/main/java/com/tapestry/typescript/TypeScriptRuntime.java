@@ -737,6 +737,10 @@ public class TypeScriptRuntime {
                 clientValue.putMember("mod", modValue);
             }
             
+            // Add client-side players API
+            ClientPlayersApi clientPlayersApi = new ClientPlayersApi();
+            clientValue.putMember("players", clientPlayersApi.createNamespace());
+            
             // Add Phase 11 event API to mod namespace
             EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
             if (eventBus != null) {

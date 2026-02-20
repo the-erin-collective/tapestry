@@ -248,9 +248,19 @@ public class PlayerService {
             player
         );
         
-        // Get the player's world and execute raycast
-        // TODO: Use player's actual dimension instead of overworld
-        ServerWorld world = server.getOverworld();
+        // Get the player's world - ServerPlayerEntity.getWorld() not available in this Yarn version
+        // Iterate through all worlds to find which one contains the player
+        ServerWorld world = null;
+        for (ServerWorld w : server.getWorlds()) {
+            if (w.getEntity(player.getUuid()) == player) {
+                world = w;
+                break;
+            }
+        }
+        // Fallback to overworld if player not found in any world
+        if (world == null) {
+            world = server.getOverworld();
+        }
         HitResult hitResult = world.raycast(context);
         
         Map<String, Object> result = new HashMap<>();
