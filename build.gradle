@@ -169,12 +169,9 @@ task exportTypes {
         def targetTypes = file("${typesDir}/index.d.ts")
         
         if (sourceTypes.exists()) {
-            copy {
-                from sourceTypes
-                into typesDir
-                rename { 'index.d.ts' }
-            }
-            println "✅ TypeScript types exported to ${targetTypes.absolutePath}"
+            // Read the content and write to target
+            targetTypes.text = sourceTypes.text
+            println "✅ TypeScript types exported to ${targetTypes.absolutePath} (${targetTypes.length()} bytes)"
         } else {
             println "⚠️  Source types.d.ts not found at ${sourceTypes.absolutePath}"
         }
@@ -184,12 +181,11 @@ task exportTypes {
         resourceTypesDir.mkdirs()
         
         if (sourceTypes.exists()) {
-            copy {
-                from sourceTypes
-                into resourceTypesDir
-                rename { 'tapestry.d.ts' }
-            }
-            println "✅ TypeScript types embedded in JAR resources"
+            def resourceTypes = file("${resourceTypesDir}/tapestry.d.ts")
+            resourceTypes.text = sourceTypes.text
+            println "✅ TypeScript types embedded in JAR resources (${resourceTypes.length()} bytes)"
+        } else {
+            println "⚠️  Source types.d.ts not found at ${sourceTypes.absolutePath}"
         }
     }
 }
