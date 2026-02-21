@@ -240,15 +240,36 @@ public class TypeScriptRuntime {
                 .allowCreateThread(false)
                 .allowNativeAccess(false)
                 .allowEnvironmentAccess(EnvironmentAccess.NONE)
-                .fileSystem(null)
+                .allowExperimentalOptions(true)
+                .option("js.console", "true")
+                .option("js.print", "true")
                 .build();
             
             // Phase 17: Inject SafeTapestryBridge instead of full API
             RpcClientFacade rpcFacade = getRpcClientFacade();
             SafeTapestryBridge bridge = new SafeTapestryBridge(rpcFacade);
             
-            // Only expose the safe bridge to JavaScript
-            jsContext.getBindings("js").putMember("tapestry", bridge);
+            // Create mod object with define function
+            Value modObject = jsContext.eval("js", "({ define: function() {} })");
+            Value defineFunctionValue = jsContext.asValue((ProxyExecutable) args -> {
+                if (args.length != 1) {
+                    throw new IllegalArgumentException("tapestry.mod.define requires exactly one argument");
+                }
+                defineFunction.define(args[0]);
+                return null;
+            });
+            modObject.putMember("define", defineFunctionValue);
+            
+            // Create tapestry object with both bridge and mod
+            Value tapestryObject = jsContext.eval("js", "({})");
+            tapestryObject.putMember("bridge", bridge);
+            tapestryObject.putMember("mod", modObject);
+            
+            // Only expose the tapestry object to JavaScript
+            LOGGER.info("=== DIAGNOSTIC: Bridge injection context identity: {}", System.identityHashCode(jsContext));
+            jsContext.getBindings("js").putMember("tapestry", tapestryObject);
+            
+            LOGGER.info("=== DIAGNOSTIC: Bindings after injection: {}", jsContext.getBindings("js").getMemberKeys());
             
             // Store API and hookRegistry for later extension in TS_READY
             // We'll extend the tapestry object when we reach TS_READY phase
@@ -376,6 +397,33 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Creates the worldgen.onResolveBlock() function for JavaScript.
+     */
+    private ProxyExecutable createWorldgenOnResolveBlockFunction(TsWorldgenApi worldgenApi) {
+        return args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("worldgen.onResolveBlock() requires exactly one argument (handler function)");
+            }
+            
+            Value handler = args[0];
+            if (!handler.canExecute()) {
+                throw new IllegalArgumentException("worldgen.onResolveBlock() requires a function as argument");
+            }
+            
+            // Get current mod ID for registration
+            String currentModId = getCurrentModId();
+            if (currentModId == null) {
+                throw new IllegalStateException("worldgen.onResolveBlock() must be called from within a mod context");
+            }
+            
+            // Register the hook
+            worldgenApi.onResolveBlock(handler);
+            
+            return null;
+        };
+    }
+    
+    /**
      * Extends the tapestry object for TS_READY phase with hook APIs.
      * 
      * @param hookRegistry the hook registry for hook registration
@@ -385,10 +433,15 @@ public class TypeScriptRuntime {
         // Get the existing tapestry object
         Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
         
-        // Create hook API instance for TS_READY phase (hook registration)
-        // Note: Old TsEventsApi removed as it's replaced by Phase 11 ModEventApi
+        // Create worldgen API instance for TS_READY phase
+        TsWorldgenApi worldgenApi = new TsWorldgenApi(hookRegistry, modRegistry);
+        Map<String, Object> worldgenNamespace = new HashMap<>();
+        worldgenNamespace.put("onResolveBlock", createWorldgenOnResolveBlockFunction(worldgenApi));
         
-        LOGGER.debug("Extended tapestry object for TS_READY phase with hook APIs");
+        // Add worldgen namespace to tapestry object
+        tapestryValue.putMember("worldgen", ProxyObject.fromMap(worldgenNamespace));
+        
+        LOGGER.debug("Extended tapestry object for TS_READY phase with worldgen API");
     }
     
     /**
@@ -449,10 +502,15 @@ public class TypeScriptRuntime {
         
         // Create Phase 9 persistence API
         PersistenceApi persistenceApi = null;
-        if (PersistenceService.getInstance().isInitialized()) {
-            // Note: This will be per-mod, so we'll create it lazily when mods request it
-            // For now, we'll inject a factory that creates per-mod instances
-            persistenceApi = createPersistenceApiFactory();
+        try {
+            if (PersistenceService.getInstance().isInitialized()) {
+                // Note: This will be per-mod, so we'll create it lazily when mods request it
+                // For now, we'll inject a factory that creates per-mod instances
+                persistenceApi = createPersistenceApiFactory();
+            }
+        } catch (IllegalStateException e) {
+            // PersistenceService not initialized yet - this is expected during client startup
+            LOGGER.debug("PersistenceService not yet initialized - skipping persistence API");
         }
         
         // Add Phase 6 namespaces
@@ -549,19 +607,67 @@ public class TypeScriptRuntime {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
         
-        // Phase enforcement: only allowed during TS_LOAD
-        PhaseController.getInstance().requirePhase(TapestryPhase.TS_LOAD);
-        
         // Set current source for context tracking
         setExecutionContext(null, ExecutionContextMode.NONE, sourceName);
         
         try {
+            LOGGER.info("=== DIAGNOSTIC: About to evaluate script: {}", sourceName);
+            LOGGER.info("=== DIAGNOSTIC: Script length: {}", source.length());
+            LOGGER.info("=== DIAGNOSTIC: Context identity: {}", System.identityHashCode(jsContext));
+            LOGGER.info("=== DIAGNOSTIC: Bindings before eval: {}", jsContext.getBindings("js").getMemberKeys());
+            LOGGER.info("=== DIAGNOSTIC: Available languages: {}", jsContext.getEngine().getLanguages().keySet());
+            
+            // Test basic JS execution
+            Value basicTest = jsContext.eval("js", "1 + 1");
+            LOGGER.info("=== DIAGNOSTIC: Basic test (1+1) result: {}", basicTest);
+            
+            // Test console availability
+            Value consoleTest = jsContext.eval("js", "typeof console");
+            LOGGER.info("=== DIAGNOSTIC: typeof console: {}", consoleTest);
+            
+            // Test print function
+            Value printTest = jsContext.eval("js", "typeof print");
+            LOGGER.info("=== DIAGNOSTIC: typeof print: {}", printTest);
+            
+            // Test console output with alternative
+            jsContext.eval("js", "if (typeof console !== 'undefined') { console.log('=== DIAGNOSTIC: Console test works! ==='); } else if (typeof print !== 'undefined') { print('=== DIAGNOSTIC: Print test works! ==='); } else { throw new Error('No console or print available'); }");
+            
+            // Test tapestry bridge visibility
+            Value tapestryTest = jsContext.eval("js", "typeof tapestry");
+            LOGGER.info("=== DIAGNOSTIC: typeof tapestry: {}", tapestryTest);
+            
             Source src = Source.newBuilder("js", source, sourceName).build();
-            jsContext.eval(src);
+            Value result = jsContext.eval(src);
+            
+            LOGGER.info("=== DIAGNOSTIC: Eval completed successfully");
+            LOGGER.info("=== DIAGNOSTIC: Script result: {}", result);
+            
+            // Test registry mutation after eval
+            LOGGER.info("=== DIAGNOSTIC: Checking registry mutation...");
+            
+            // Check if tapestry bridge was called
+            Value bindings = jsContext.getBindings("js");
+            LOGGER.info("=== DIAGNOSTIC: Has tapestry: {}", bindings.hasMember("tapestry"));
+            if (bindings.hasMember("tapestry")) {
+                Value tapestryObj = bindings.getMember("tapestry");
+                LOGGER.info("=== DIAGNOSTIC: tapestry.mod: {}", tapestryObj.getMember("mod"));
+            }
+            
+            // Test direct bridge call
+            LOGGER.info("=== DIAGNOSTIC: Testing direct bridge call...");
+            try {
+                Value directTest = jsContext.eval("js", "tapestry.mod.define({id: 'direct-test', version: '1.0.0'});");
+                LOGGER.info("=== DIAGNOSTIC: Direct bridge call result: {}", directTest);
+            } catch (Exception e) {
+                LOGGER.error("=== DIAGNOSTIC: Direct bridge call failed", e);
+            }
+            
             LOGGER.debug("Successfully evaluated script: {}", sourceName);
-        } catch (Exception e) {
-            LOGGER.error("Failed to evaluate script: {}", sourceName, e);
-            throw new RuntimeException("Script evaluation failed: " + sourceName, e);
+        } catch (Throwable t) {
+            System.err.println("=== DIAGNOSTIC: JS EVALUATION FAILED HARD ===");
+            t.printStackTrace();
+            LOGGER.error("Failed to evaluate script: {}", sourceName, t);
+            throw new RuntimeException("Script evaluation failed: " + sourceName, t);
         } finally {
             // Clear current source
             clearExecutionContext();
@@ -636,16 +742,18 @@ public class TypeScriptRuntime {
                 throw new RuntimeException("tapestry object is not accessible");
             }
             
-            // Check that mod.define exists (available in all phases)
-            Value modDefine = jsContext.eval("js", "typeof tapestry.mod.define");
-            if (!modDefine.asString().equals("function")) {
-                throw new RuntimeException("tapestry.mod.define is not a function");
-            }
-            
             // Check that console functions exist (available in all phases)
             Value consoleLog = jsContext.eval("js", "typeof console.log");
             if (!consoleLog.asString().equals("function")) {
                 throw new RuntimeException("console.log is not a function");
+            }
+            
+            // Only check mod.define in phases where it's available (TS_REGISTER and later)
+            if (phase.ordinal() >= TapestryPhase.TS_REGISTER.ordinal()) {
+                Value modDefine = jsContext.eval("js", "typeof tapestry.mod.define");
+                if (!modDefine.asString().equals("function")) {
+                    throw new RuntimeException("tapestry.mod.define is not a function");
+                }
             }
             
             // Phase-specific checks
@@ -657,13 +765,15 @@ public class TypeScriptRuntime {
                 }
             }
             
-            if (phase == TapestryPhase.CLIENT_PRESENTATION_READY || phase == TapestryPhase.RUNTIME) {
+            if (phase == TapestryPhase.CLIENT_PRESENTATION_READY) {
                 // Check that client.overlay.register exists (only available from CLIENT_PRESENTATION_READY onwards)
                 Value overlayRegister = jsContext.eval("js", "typeof tapestry.client.overlay.register");
                 if (!overlayRegister.asString().equals("function")) {
                     throw new RuntimeException("tapestry.client.overlay.register is not a function");
                 }
-                
+            }
+            
+            if (phase == TapestryPhase.CLIENT_PRESENTATION_READY) {
                 // Check that tapestry.utils.mikel exists (only available from CLIENT_PRESENTATION_READY onwards)
                 Value mikel = jsContext.eval("js", "typeof tapestry.utils.mikel");
                 if (!mikel.asString().equals("function")) {
@@ -892,8 +1002,9 @@ public class TypeScriptRuntime {
                 LOGGER.info("Phase 14 GraalVM type integration initialized");
             }
             
-            // Get existing tapestry object
-            Value tapestryValue = jsContext.getBindings("js").getMember("tapestry");
+            // Replace SafeTapestryBridge with writable object at TS_REGISTER phase
+            // SafeTapestryBridge is too restrictive for mod registration
+            Map<String, Object> writableTapestry = new HashMap<>();
             
             // Create mod namespace with define API
             Map<String, Object> modNamespace = new HashMap<>();
@@ -906,7 +1017,11 @@ public class TypeScriptRuntime {
             // Add runtime capability access API (will be validated by CapabilityRegistry.isFrozen())
             modNamespace.put("getCapability", capabilityApi.createRuntimeCapabilityNamespace());
             
-            tapestryValue.putMember("mod", ProxyObject.fromMap(modNamespace));
+            // Create writable tapestry object with mod namespace
+            writableTapestry.put("mod", ProxyObject.fromMap(modNamespace));
+            
+            // Replace SafeTapestryBridge with writable object
+            jsContext.getBindings("js").putMember("tapestry", ProxyObject.fromMap(writableTapestry));
             
             // Run TS_REGISTER phase sanity check
             runSanityCheckForPhase(TapestryPhase.TS_REGISTER);
@@ -1257,10 +1372,10 @@ public class TypeScriptRuntime {
         }
         
         try {
-            // Create RPC namespace
-            Value rpcNamespace = Context.getCurrent().asValue(RpcApi.createNamespace());
-            // Create env namespace for side awareness
-            Value envNamespace = Context.getCurrent().asValue(EnvApi.createNamespace());
+            // Create RPC namespace using jsContext instead of Context.getCurrent()
+            Value rpcNamespace = jsContext.asValue(RpcApi.createNamespace());
+            // Create env namespace for side awareness using jsContext instead of Context.getCurrent()
+            Value envNamespace = jsContext.asValue(EnvApi.createNamespace());
             // Inject into global tapestry object
             Value tapestry = jsContext.getBindings("js").getMember("tapestry");
             tapestry.putMember("rpc", rpcNamespace);

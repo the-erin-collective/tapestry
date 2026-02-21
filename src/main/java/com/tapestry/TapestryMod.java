@@ -6,6 +6,9 @@ import com.tapestry.extensions.types.ExtensionTypeRegistry;
 import com.tapestry.extensions.ExtensionLifecycleManager;
 import com.tapestry.extensions.ExtensionState;
 import com.tapestry.extensions.LifecycleViolationException;
+import com.tapestry.extensions.CapabilityDecl;
+import com.tapestry.extensions.CapabilityType;
+import com.tapestry.extensions.TapestryExtensionDescriptor;
 import com.tapestry.extensions.ValidatedExtension;
 import com.tapestry.extensions.ExtensionValidator;
 import com.tapestry.extensions.ValidationPolicy;
@@ -65,9 +68,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import java.util.Optional;
 import java.util.HashMap;
 
 import com.tapestry.extensions.Version;
@@ -179,7 +180,8 @@ public class TapestryMod implements ModInitializer {
                 LOGGER.info("PlayerService initialized with server instance");
             }
             
-            // Initialize Phase 9 persistence service
+                        
+            // Initialize Phase 9 persistence service BEFORE advancing to RUNTIME
             if (persistenceService == null) {
                 if (server.isDedicated()) {
                     // Server: world-scoped storage
@@ -196,11 +198,16 @@ public class TapestryMod implements ModInitializer {
                 }
             }
             
-            // Advance to PERSISTENCE_READY phase
-            PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
-            LOGGER.info("PERSISTENCE_READY phase completed");
+            // Advance to PERSISTENCE_READY phase BEFORE RUNTIME (if not already past it)
+            var currentPhase = PhaseController.getInstance().getCurrentPhase();
+            if (currentPhase.ordinal() < TapestryPhase.PERSISTENCE_READY.ordinal()) {
+                PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
+                LOGGER.info("PERSISTENCE_READY phase completed");
+            } else {
+                LOGGER.info("PERSISTENCE_READY phase already completed, skipping");
+            }
             
-            // Phase 16: Initialize RPC system when server is ready
+            // Initialize RPC system
             initializeRpcSystem(server);
             
             // Initialize Phase 10.5 mod system
@@ -347,20 +354,54 @@ public class TapestryMod implements ModInitializer {
         
         // Build registries for capability registration
         var phaseController = PhaseController.getInstance();
-        var declaredCapabilities = validationResult.enabled().values().stream()
+        
+        // Create core Tapestry extension descriptor with player capabilities
+        List<CapabilityDecl> coreCapabilities = List.of(
+            new CapabilityDecl("players.list", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.list"),
+            new CapabilityDecl("players.get", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.get"),
+            new CapabilityDecl("players.findByName", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.findByName"),
+            new CapabilityDecl("players.sendChat", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.sendChat"),
+            new CapabilityDecl("players.sendActionBar", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.sendActionBar"),
+            new CapabilityDecl("players.sendTitle", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.sendTitle"),
+            new CapabilityDecl("players.getPosition", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.getPosition"),
+            new CapabilityDecl("players.getLook", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.getLook"),
+            new CapabilityDecl("players.getGameMode", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.getGameMode"),
+            new CapabilityDecl("players.raycastBlock", CapabilityType.API, false, Map.of(), "tapestry.mods.tapestry.players.raycastBlock")
+        );
+        
+        var tapestryExtension = new TapestryExtensionDescriptor(
+            "tapestry",                                    // id
+            "Tapestry Core",                               // displayName
+            "0.0.1",                                      // version
+            "0.0.1",                                      // minTapestry
+            coreCapabilities,                              // capabilities
+            List.of(),                                    // requires
+            List.of(),                                    // requiresCapabilities
+            Optional.of("types/tapestry.d.ts"),           // typeExportEntry
+            List.of()                                     // typeImports
+        );
+        
+        // Combine extension capabilities with core capabilities
+        Map<String, TapestryExtensionDescriptor> declaredCapabilities = validationResult.enabled().values().stream()
             .collect(java.util.stream.Collectors.toMap(
                 ext -> ext.descriptor().id(),
                 ValidatedExtension::descriptor
             ));
         
+        // Add core Tapestry extension
+        declaredCapabilities.put("tapestry", tapestryExtension);
+        
         // Phase 4: Initialize extension registries
         var apiRegistry = new com.tapestry.extensions.DefaultApiRegistry(
-            phaseController, new HashMap<>()
+            phaseController, declaredCapabilities
         );
         var serviceRegistry = new com.tapestry.extensions.DefaultServiceRegistry(
             phaseController, new HashMap<>()
         );
         var hookRegistry = extensionsHookRegistry;
+        
+        // Register core capabilities (PlayersApi, etc.)
+        registerCoreCapabilities(apiRegistry);
         
         // Create orchestrator and register extensions
         var orchestrator = new ExtensionRegistrationOrchestrator(
@@ -401,7 +442,7 @@ public class TapestryMod implements ModInitializer {
             throw new RuntimeException("Failed to discover TypeScript mods", e);
         }
         
-        // Evaluate all mod scripts (mod definition only)
+        // Evaluate all mod scripts (mod definition only) - AFTER runtime is initialized
         for (DiscoveredMod mod : discoveredMods) {
             try {
                 String source = readModSource(mod);
@@ -425,25 +466,6 @@ public class TapestryMod implements ModInitializer {
             }
         }
         
-        // TS_READY: Execute onLoad functions and allow hook registration
-        LOGGER.info("=== TS_READY PHASE ===");
-        PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
-        
-        // Extend the tapestry object with hook APIs for TS_READY phase
-        tsRuntime.extendForReadyPhase(tsHookRegistry, modRegistry);
-        
-        // Allow hook registration
-        tsHookRegistry.allowRegistration();
-        
-        // Complete loading phase
-        modRegistry.completeLoading();
-        
-        // Disallow further hook registration and freeze hooks registry
-        tsHookRegistry.disallowRegistration();
-        tsHookRegistry.freeze();
-        
-        LOGGER.info("TypeScript mod loading complete");
-        
         // TS_REGISTER: Capability registration phase
         LOGGER.info("=== TS_REGISTER PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
@@ -451,18 +473,6 @@ public class TapestryMod implements ModInitializer {
         try {
             // Extend TypeScript runtime with capability registration APIs
             tsRuntime.extendForCapabilityRegistration();
-            
-            // Execute onLoad for all mods in deterministic order (capability registration happens here)
-            for (var mod : modRegistry.getMods()) {
-                try {
-                    LOGGER.info("Executing onLoad for mod: {} (capability registration)", mod.id());
-                    tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id());
-                    LOGGER.debug("Completed onLoad for mod: {}", mod.id());
-                } catch (Exception e) {
-                    LOGGER.error("Mod {} threw exception in onLoad", mod.id(), e);
-                    throw new RuntimeException("Mod onLoad failed: " + mod.id(), e);
-                }
-            }
             
             // Complete capability registration phase
             modRegistry.completeCapabilityRegistration();
@@ -501,17 +511,8 @@ public class TapestryMod implements ModInitializer {
                 var allProvidedCapabilities = com.tapestry.typescript.CapabilityApi.getAllProvidedCapabilities();
                 var capabilityProviders = capabilityValidationResult.capabilityProviders();
                 
-                LOGGER.info("Initializing CapabilityRegistry with {} providers", capabilityProviders.size());
-                LOGGER.debug("Capability providers: {}", capabilityProviders);
-                LOGGER.debug("All provided capabilities: {}", allProvidedCapabilities.keySet());
-                
-                com.tapestry.extensions.CapabilityRegistry.initialize(capabilityProviders, allProvidedCapabilities);
-                com.tapestry.extensions.CapabilityRegistry.freeze();
-                
-                // Clear temporary capability storage
-                com.tapestry.typescript.CapabilityApi.clearTemporaryStorage();
-                
-                LOGGER.info("Capability system initialized successfully");
+                LOGGER.info("CapabilityRegistry already initialized by ExtensionValidator");
+                LOGGER.info("Capability system ready with {} providers", capabilityProviders.size());
             } else {
                 LOGGER.error("Capability validation failed with {} errors", capabilityValidationResult.errors().size());
                 throw new RuntimeException("Capability validation failed - aborting startup");
@@ -522,6 +523,33 @@ public class TapestryMod implements ModInitializer {
             throw new RuntimeException("Capability activation failed", e);
         }
         
+        // TS_READY: Execute onLoad functions and allow hook registration
+        LOGGER.info("=== TS_READY PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_READY);
+        
+        // Extend the tapestry object with hook APIs for TS_READY phase
+        tsRuntime.extendForReadyPhase(tsHookRegistry, modRegistry);
+        
+        // Execute onLoad for all mods in deterministic order (now in correct phase)
+        for (var mod : modRegistry.getMods()) {
+            try {
+                LOGGER.info("Executing onLoad for mod: {} (TS_READY phase)", mod.id());
+                tsRuntime.executeOnLoad(mod.getOnLoad(), mod.id());
+                LOGGER.debug("Completed onLoad for mod: {}", mod.id());
+            } catch (Exception e) {
+                LOGGER.error("Mod {} threw exception in onLoad", mod.id(), e);
+                throw new RuntimeException("Mod onLoad failed: " + mod.id(), e);
+            }
+        }
+        
+        // Allow hook registration
+        tsHookRegistry.allowRegistration();
+        
+        // Complete loading phase
+        modRegistry.completeLoading();
+        
+        LOGGER.info("TypeScript mod loading complete");
+        
         // RUNTIME: Initialize Phase 6 services and begin gameplay
         initializeRuntimeServices();
     }
@@ -530,6 +558,28 @@ public class TapestryMod implements ModInitializer {
      * Initializes Phase 6 runtime services and advances to RUNTIME phase.
      */
     private static void initializeRuntimeServices() {
+        LOGGER.info("=== PERSISTENCE_READY PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
+        
+        try {
+            // Initialize persistence services (no-op if unused)
+            LOGGER.info("Persistence services initialized");
+        } catch (Exception e) {
+            LOGGER.error("Failed to initialize persistence services", e);
+            throw new RuntimeException("Persistence initialization failed", e);
+        }
+        
+        LOGGER.info("=== EVENT PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.EVENT);
+        
+        try {
+            // Initialize event system (no-op if unused)
+            LOGGER.info("Event system initialized");
+        } catch (Exception e) {
+            LOGGER.error("Failed to initialize event system", e);
+            throw new RuntimeException("Event system initialization failed", e);
+        }
+        
         LOGGER.info("=== RUNTIME PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
         
@@ -703,13 +753,22 @@ public class TapestryMod implements ModInitializer {
     private static void initializePhase105ModSystem() {
         LOGGER.info("Initializing Phase 10.5 mod system");
         
-        // Advance to TS_REGISTER phase
-        PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
-        LOGGER.info("TS_REGISTER phase started");
+        // Advance to TS_REGISTER phase (if not already past it)
+        var currentPhase = PhaseController.getInstance().getCurrentPhase();
+        if (currentPhase.ordinal() < TapestryPhase.TS_REGISTER.ordinal()) {
+            PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
+            LOGGER.info("TS_REGISTER phase started");
+        } else {
+            LOGGER.info("TS_REGISTER phase already completed, skipping");
+        }
         
         try {
-            // Extend runtime for registration
-            tsRuntime.extendForRegistration();
+            // Extend runtime for registration (only if not already past TS_REGISTER)
+            if (currentPhase.ordinal() < TapestryPhase.TS_REGISTER.ordinal()) {
+                tsRuntime.extendForRegistration();
+            } else {
+                LOGGER.info("TS_REGISTER phase already completed, skipping registration extension");
+            }
             
             // Discover and evaluate mods
             ModDiscovery discovery = new ModDiscovery();
@@ -734,12 +793,16 @@ public class TapestryMod implements ModInitializer {
                 LOGGER.info("Evaluated {} mod scripts", discoveredMods.size());
             }
             
-            // Advance to TS_ACTIVATE phase
-            PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
-            LOGGER.info("TS_ACTIVATE phase started");
-            
-            // Extend runtime for activation
-            tsRuntime.extendForActivation();
+            // Advance to TS_ACTIVATE phase (if not already past it)
+            if (currentPhase.ordinal() < TapestryPhase.TS_ACTIVATE.ordinal()) {
+                PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
+                LOGGER.info("TS_ACTIVATE phase started");
+                
+                // Extend runtime for activation
+                tsRuntime.extendForActivation();
+            } else {
+                LOGGER.info("TS_ACTIVATE phase already completed, skipping activation");
+            }
             
             // Log mod registry stats
             ModRegistry modRegistry = ModRegistry.getInstance();

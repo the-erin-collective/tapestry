@@ -38,6 +38,8 @@ dependencies {
     // GraalVM Polyglot for TypeScript runtime - use compatible versions
     implementation 'org.graalvm.sdk:graal-sdk:23.0.0'
     implementation 'org.graalvm.js:js:23.0.0'
+    implementation 'org.graalvm.js:js-scriptengine:23.0.0'
+    implementation 'org.graalvm.truffle:truffle-api:23.0.0'
     
     // Jackson for JSON handling
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
@@ -74,6 +76,16 @@ java {
     }
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
+}
+
+// Include GraalVM and Jackson dependencies in JAR
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.filter { it.name.contains('graal') || it.name.contains('js') || it.name.contains('truffle') || it.name.contains('jackson') }
+        .collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
 }
 
 test {
