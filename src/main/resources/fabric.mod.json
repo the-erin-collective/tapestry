@@ -17,9 +17,6 @@
   "entrypoints": {
     "main": [
       "com.tapestry.TapestryMod"
-    ],
-    "client": [
-      "com.tapestry.rpc.client.RpcClientNetworkRegistrar"
     ]
   },
   "depends": {

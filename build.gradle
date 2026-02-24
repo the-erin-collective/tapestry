@@ -39,6 +39,8 @@ dependencies {
     // GraalVM Polyglot for TypeScript runtime - use compatible versions
     implementation 'org.graalvm.sdk:graal-sdk:23.0.0'
     implementation 'org.graalvm.js:js:23.0.0'
+    implementation 'org.graalvm.js:js-scriptengine:23.0.0'
+    implementation 'org.graalvm.truffle:truffle-api:23.0.0'
     
     // Jackson for JSON handling
     modImplementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
@@ -84,6 +86,16 @@ java {
     }
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
+}
+
+// Include GraalVM and Jackson dependencies in JAR
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.filter { it.name.contains('graal') || it.name.contains('js') || it.name.contains('truffle') || it.name.contains('jackson') }
+        .collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
 }
 
 test {
@@ -179,12 +191,9 @@ task exportTypes {
         def targetTypes = file("${typesDir}/index.d.ts")
         
         if (sourceTypes.exists()) {
-            copy {
-                from sourceTypes
-                into typesDir
-                rename { 'index.d.ts' }
-            }
-            println "✅ TypeScript types exported to ${targetTypes.absolutePath}"
+            // Read the content and write to target
+            targetTypes.text = sourceTypes.text
+            println "✅ TypeScript types exported to ${targetTypes.absolutePath} (${targetTypes.length()} bytes)"
         } else {
             println "⚠️  Source types.d.ts not found at ${sourceTypes.absolutePath}"
         }
@@ -194,12 +203,11 @@ task exportTypes {
         resourceTypesDir.mkdirs()
         
         if (sourceTypes.exists()) {
-            copy {
-                from sourceTypes
-                into resourceTypesDir
-                rename { 'tapestry.d.ts' }
-            }
-            println "✅ TypeScript types embedded in JAR resources"
+            def resourceTypes = file("${resourceTypesDir}/tapestry.d.ts")
+            resourceTypes.text = sourceTypes.text
+            println "✅ TypeScript types embedded in JAR resources (${resourceTypes.length()} bytes)"
+        } else {
+            println "⚠️  Source types.d.ts not found at ${sourceTypes.absolutePath}"
         }
     }
 }
