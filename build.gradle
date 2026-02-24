@@ -23,6 +23,15 @@ repositories {
     }
 }
 
+// Create a resolvable configuration for Shadow that only includes our specific dependencies
+configurations {
+    shadowDeps {
+        extendsFrom implementation
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
 dependencies {
     // Fabric
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -42,21 +51,13 @@ dependencies {
     implementation 'org.graalvm.js:js-scriptengine:23.0.0'
     implementation 'org.graalvm.truffle:truffle-api:23.0.0'
     
-    // Jackson for JSON handling
+    // Jackson for JSON handling - add to both modImplementation and shadowDeps
     modImplementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    shadowDeps 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
     testImplementation 'org.mockito:mockito-core:5.6.0'
-}
-
-// Create a resolvable configuration for Shadow that only includes our specific dependencies
-configurations {
-    shadowDeps {
-        extendsFrom implementation
-        canBeResolved = true
-        canBeConsumed = false
-    }
 }
 
 processResources {
