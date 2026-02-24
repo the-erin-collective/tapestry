@@ -23,6 +23,7 @@ public class ModDescriptor {
     // Lifecycle functions stored during registration
     private Value activateFunction;
     private Value deactivateFunction;
+    private Value onLoadFunction;
     
     // Runtime state
     private ModState state = ModState.REGISTERED;
@@ -56,6 +57,7 @@ public class ModDescriptor {
     public String getSourcePath() { return sourcePath; }
     public Value getActivateFunction() { return activateFunction; }
     public Value getDeactivateFunction() { return deactivateFunction; }
+    public Value getOnLoadFunction() { return onLoadFunction; }
     public ModState getState() { return state; }
     public Map<String, Object> getExports() { return exports; }
     
@@ -66,6 +68,10 @@ public class ModDescriptor {
     
     public void setDeactivateFunction(Value deactivateFunction) {
         this.deactivateFunction = deactivateFunction;
+    }
+    
+    public void setOnLoadFunction(Value onLoadFunction) {
+        this.onLoadFunction = onLoadFunction;
     }
     
     // State management
@@ -84,6 +90,10 @@ public class ModDescriptor {
     
     public boolean hasDeactivateFunction() {
         return deactivateFunction != null && deactivateFunction.canExecute();
+    }
+    
+    public boolean hasOnLoadFunction() {
+        return onLoadFunction != null && onLoadFunction.canExecute();
     }
     
     public boolean isActive() {

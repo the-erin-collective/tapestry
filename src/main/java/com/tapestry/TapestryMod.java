@@ -227,13 +227,16 @@ public class TapestryMod implements ModInitializer {
             // Initialize client presentation layer (Phase 10)
             if (tsRuntime != null) {
                 try {
-                    tsRuntime.extendForClientPresentation();
+                    // First advance to CLIENT_PRESENTATION_READY phase
                     PhaseController.getInstance().advanceTo(TapestryPhase.CLIENT_PRESENTATION_READY);
+                    
+                    // Then extend runtime for CLIENT_PRESENTATION_READY phase
+                    tsRuntime.extendForClientPresentation();
                     
                     // Emit Phase 11 engine:runtimeStart event
                     if (eventBus != null) {
                         try {
-                            eventBus.emit(null, "engine:runtimeStart", Map.of(
+                            eventBus.emit("platform", "engine:runtimeStart", Map.of(
                                 "serverTicks", server.getTicks(),
                                 "timestamp", System.currentTimeMillis()
                             ));
@@ -242,8 +245,6 @@ public class TapestryMod implements ModInitializer {
                         }
                     }
                     
-                    // Extend runtime for CLIENT_PRESENTATION_READY phase
-                    tsRuntime.extendForClientPresentation();
                     LOGGER.info("CLIENT_PRESENTATION_READY phase completed");
                 } catch (Exception e) {
                     LOGGER.error("Failed to initialize client presentation layer", e);
@@ -257,7 +258,7 @@ public class TapestryMod implements ModInitializer {
             // Emit Phase 11 engine:tick event
             if (eventBus != null) {
                 try {
-                    eventBus.emit(null, "engine:tick", server.getTicks());
+                    eventBus.emit("platform", "engine:tick", server.getTicks());
                 } catch (Exception e) {
                     LOGGER.error("Error during engine:tick event emission", e);
                 }
@@ -442,30 +443,6 @@ public class TapestryMod implements ModInitializer {
             throw new RuntimeException("Failed to discover TypeScript mods", e);
         }
         
-        // Evaluate all mod scripts (mod definition only) - AFTER runtime is initialized
-        for (DiscoveredMod mod : discoveredMods) {
-            try {
-                String source = readModSource(mod);
-                tsRuntime.evaluateScript(source, mod.sourceName());
-                LOGGER.debug("Loaded mod script: {}", mod.sourceName());
-            } catch (Exception e) {
-                LOGGER.error("Failed to load mod: {}", mod.sourceName(), e);
-                throw new RuntimeException("Mod loading failed: " + mod.sourceName(), e);
-            }
-        }
-        
-        // Complete discovery phase
-        modRegistry.completeDiscovery();
-        
-        // Verify all scripts called tapestry.mod.define (fail-fast enforcement)
-        for (DiscoveredMod mod : discoveredMods) {
-            if (!TypeScriptRuntime.hasModDefinedInSource(mod.sourceName())) {
-                throw new RuntimeException(
-                    String.format("Script '%s' never called tapestry.mod.define - startup aborted", mod.sourceName())
-                );
-            }
-        }
-        
         // TS_REGISTER: Capability registration phase
         LOGGER.info("=== TS_REGISTER PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
@@ -474,8 +451,41 @@ public class TapestryMod implements ModInitializer {
             // Extend TypeScript runtime with capability registration APIs
             tsRuntime.extendForCapabilityRegistration();
             
+            // Evaluate all mod scripts (mod definition only) - AFTER TS_REGISTER phase
+            for (DiscoveredMod mod : discoveredMods) {
+                try {
+                    String source = readModSource(mod);
+                    tsRuntime.evaluateScript(source, mod.sourceName());
+                    LOGGER.debug("Loaded mod script: {}", mod.sourceName());
+                } catch (Exception e) {
+                    LOGGER.error("Failed to load mod: {}", mod.sourceName(), e);
+                    throw new RuntimeException("Mod loading failed: " + mod.sourceName(), e);
+                }
+            }
+            
+            // Check that all mods called tapestry.mod.define
+            for (DiscoveredMod mod : discoveredMods) {
+                // Extract mod ID from source name (format: "classpath:modId/filename.js" or "filesystem:modId/filename.js")
+                String sourceName = mod.sourceName();
+                System.out.println("=== DIAGNOSTIC: Checking mod with sourceName: " + sourceName);
+                String modId = sourceName.split(":")[1].split("/")[0];
+                System.out.println("=== DIAGNOSTIC: Extracted modId: " + modId);
+                
+                // Use the same registry as mod.define() function
+                com.tapestry.mod.ModRegistry validationRegistry = com.tapestry.mod.ModRegistry.getInstance();
+                System.out.println("=== DIAGNOSTIC: ModRegistry contains this mod: " + (validationRegistry.getMod(modId) != null));
+                if (validationRegistry.getMod(modId) == null) {
+                    throw new RuntimeException(
+                        String.format("Script '%s' never called tapestry.mod.define - startup aborted", mod.sourceName())
+                    );
+                }
+            }
+            
             // Complete capability registration phase
             modRegistry.completeCapabilityRegistration();
+            
+            // Mark discovery as complete before moving to loading phase
+            modRegistry.completeDiscovery();
             
             LOGGER.info("TypeScript capability registration complete");
         } catch (Exception e) {
@@ -544,6 +554,9 @@ public class TapestryMod implements ModInitializer {
         
         // Allow hook registration
         tsHookRegistry.allowRegistration();
+        
+        // Mark discovery as complete before completing loading
+        modRegistry.completeDiscovery();
         
         // Complete loading phase
         modRegistry.completeLoading();

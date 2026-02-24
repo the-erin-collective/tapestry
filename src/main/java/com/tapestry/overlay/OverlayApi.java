@@ -200,10 +200,15 @@ public class OverlayApi implements ProxyObject {
         Object data = args.length > 1 ? TypeScriptRuntime.fromValue(args[1]) : null;
         
         try {
-            // Get Mikel from tapestry.utils.mikel
+            // Get Mikel from tapestry.utils.mikel (if available)
             Value tapestry = (Value) TypeScriptRuntime.evalExpression("tapestry");
             Value utils = tapestry.getMember("utils");
             Value mikel = utils.getMember("mikel");
+            
+            // Check if Mikel is available
+            if (mikel == null || mikel.isNull()) {
+                throw new RuntimeException("Mikel templating library is not available - template processing requires Mikel");
+            }
             
             // Process template with Mikel
             String renderedTemplate;

@@ -607,8 +607,22 @@ public class TypeScriptRuntime {
             throw new IllegalStateException("TypeScript runtime not initialized");
         }
         
+        // Extract modId from sourceName if it's a mod script (format: "classpath:modId/filename.js" or "filesystem:modId/filename.js")
+        String modId = null;
+        if (sourceName.contains(":")) {
+            String[] parts = sourceName.split(":");
+            if (parts.length >= 2) {
+                String pathPart = parts[1];
+                if (pathPart.contains("/")) {
+                    modId = pathPart.split("/")[0];
+                }
+            }
+        }
+        
+        LOGGER.info("=== DIAGNOSTIC: Extracted modId '{}' from sourceName '{}'", modId, sourceName);
+        
         // Set current source for context tracking
-        setExecutionContext(null, ExecutionContextMode.NONE, sourceName);
+        setExecutionContext(modId, ExecutionContextMode.NONE, sourceName);
         
         try {
             LOGGER.info("=== DIAGNOSTIC: About to evaluate script: {}", sourceName);
@@ -1123,6 +1137,8 @@ public class TypeScriptRuntime {
      */
     private ProxyExecutable createModDefineFunction(ModRegistry modRegistry) {
         return args -> {
+            LOGGER.info("=== DIAGNOSTIC: mod.define() called with {} arguments", args.length);
+            
             if (args.length != 1) {
                 throw new IllegalArgumentException("mod.define() requires exactly one argument");
             }
@@ -1135,8 +1151,11 @@ public class TypeScriptRuntime {
             String id = definition.getMember("id").asString();
             String version = definition.getMember("version").asString();
             
+            LOGGER.info("=== DIAGNOSTIC: mod.define() called for id='{}', version='{}'", id, version);
+            
             // Guard against duplicate define() calls from same mod context
             String currentModId = getCurrentModId();
+            LOGGER.info("=== DIAGNOSTIC: Current modId from context: '{}'", currentModId);
             if (currentModId != null && definedMods.contains(currentModId)) {
                 throw new IllegalStateException(
                     String.format("mod.define() already called for mod '%s'. Each mod may call define() exactly once.", currentModId));
@@ -1166,6 +1185,7 @@ public class TypeScriptRuntime {
             
             // Register the mod
             modRegistry.registerMod(descriptor);
+            LOGGER.info("=== DIAGNOSTIC: Mod '{}' registered successfully in registry", id);
             
             // Mark this mod as defined to prevent duplicate calls
             if (currentModId != null) {

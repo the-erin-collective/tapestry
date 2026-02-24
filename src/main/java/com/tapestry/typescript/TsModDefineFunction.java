@@ -54,6 +54,11 @@ public class TsModDefineFunction {
             throw new IllegalStateException("No current source context for mod definition");
         }
         
+        // Diagnostic logging
+        System.out.println("=== DIAGNOSTIC: define() called for source: " + currentSource);
+        System.out.println("=== DIAGNOSTIC: sourcesWithModDefine contains: " + 
+            com.tapestry.typescript.TypeScriptRuntime.hasModDefinedInSource(currentSource));
+        
         // Enforce one-define-per-file rule
         if (TypeScriptRuntime.hasModDefinedInSource(currentSource)) {
             throw new IllegalStateException(

@@ -226,8 +226,10 @@ public class EventBus {
             case "engine":
                 if ("emit".equals(operation)) {
                     // Mods cannot emit engine events, only platform can
-                    throw new IllegalArgumentException(
-                        String.format("Mod '%s' cannot emit engine events (attempted: %s)", modId, eventName));
+                    if (!"platform".equals(modId)) {
+                        throw new IllegalArgumentException(
+                            String.format("Mod '%s' cannot emit engine events (attempted: %s)", modId, eventName));
+                    }
                 }
                 // Mods can subscribe to engine events - this is allowed
                 break;

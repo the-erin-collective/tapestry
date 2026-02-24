@@ -84,6 +84,7 @@ public class ModRegistry {
         performanceMonitor.checkModCountLimit(registeredMods.size(), 1);
         
         String modId = descriptor.getId();
+        System.out.println("=== DIAGNOSTIC: registerMod called with modId: " + modId);
         
         if (registeredMods.containsKey(modId)) {
             throw new IllegalArgumentException("Duplicate mod ID: " + modId);
@@ -101,6 +102,8 @@ public class ModRegistry {
         
         registeredMods.put(modId, descriptor);
         definedMods.add(modId);
+        System.out.println("=== DIAGNOSTIC: Mod stored in registry. registeredMods size: " + registeredMods.size());
+        System.out.println("=== DIAGNOSTIC: registeredMods contains key '" + modId + "': " + registeredMods.containsKey(modId));
         
         LOGGER.debug("Registered mod: {} (version: {}, dependencies: {})", 
                     modId, descriptor.getVersion(), descriptor.getDependsOn());
