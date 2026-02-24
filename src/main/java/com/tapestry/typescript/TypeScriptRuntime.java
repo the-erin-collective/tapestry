@@ -667,15 +667,6 @@ public class TypeScriptRuntime {
                 LOGGER.info("=== DIAGNOSTIC: tapestry.mod: {}", tapestryObj.getMember("mod"));
             }
             
-            // Test direct bridge call
-            LOGGER.info("=== DIAGNOSTIC: Testing direct bridge call...");
-            try {
-                Value directTest = jsContext.eval("js", "tapestry.mod.define({id: 'direct-test', version: '1.0.0'});");
-                LOGGER.info("=== DIAGNOSTIC: Direct bridge call result: {}", directTest);
-            } catch (Exception e) {
-                LOGGER.error("=== DIAGNOSTIC: Direct bridge call failed", e);
-            }
-            
             LOGGER.debug("Successfully evaluated script: {}", sourceName);
         } catch (Throwable t) {
             System.err.println("=== DIAGNOSTIC: JS EVALUATION FAILED HARD ===");
@@ -788,11 +779,7 @@ public class TypeScriptRuntime {
             }
             
             if (phase == TapestryPhase.CLIENT_PRESENTATION_READY) {
-                // Check that tapestry.utils.mikel exists (only available from CLIENT_PRESENTATION_READY onwards)
-                Value mikel = jsContext.eval("js", "typeof tapestry.utils.mikel");
-                if (!mikel.asString().equals("function")) {
-                    throw new RuntimeException("tapestry.utils.mikel is not a function");
-                }
+                // Mikel templating library has been removed - no validation needed
             }
             
             LOGGER.debug("Sanity check passed for phase: {}", phase);
@@ -833,9 +820,6 @@ public class TypeScriptRuntime {
         }
         
         try {
-            // Load Mikel templating library from embedded resources
-            loadMikelLibrary();
-            
             // Initialize overlay system
             OverlayRegistry overlayRegistry = OverlayRegistry.getInstance();
             OverlayApi overlayApi = new OverlayApi(overlayRegistry);
@@ -886,6 +870,9 @@ public class TypeScriptRuntime {
                 modValue.putMember("capability", capabilityApi.createRuntimeCapabilityNamespace());
             }
             
+            // Add overlay API to client namespace
+            clientValue.putMember("overlay", overlayApi.createNamespace());
+            
             // Initialize overlay renderer
             com.tapestry.overlay.OverlayRenderer.getInstance(overlayRegistry);
             
@@ -897,55 +884,6 @@ public class TypeScriptRuntime {
         } catch (Exception e) {
             LOGGER.error("Failed to extend TypeScript runtime for CLIENT_PRESENTATION_READY", e);
             throw new RuntimeException("Failed to extend TypeScript runtime for CLIENT_PRESENTATION_READY", e);
-        }
-    }
-    
-    /**
-     * Loads the Mikel templating library from embedded resources.
-     * 
-     * @throws RuntimeException if loading fails
-     */
-    private void loadMikelLibrary() {
-        final String MIKEL_RESOURCE_PATH = "/tapestry/mikel/mikel.js";
-        final String MIKEL_VERSION = "v0.32.0";
-        
-        try {
-            LOGGER.info("Loading Mikel templating library version {} from embedded resources...", MIKEL_VERSION);
-            
-            // Load the library from embedded resources
-            String mikelSource;
-            try (InputStream inputStream = TypeScriptRuntime.class.getResourceAsStream(MIKEL_RESOURCE_PATH)) {
-                if (inputStream == null) {
-                    throw new IOException("Mikel library not found at resource path: " + MIKEL_RESOURCE_PATH);
-                }
-                byte[] bytes = inputStream.readAllBytes();
-                mikelSource = new String(bytes, StandardCharsets.UTF_8);
-            }
-            
-            // Load the library into the JavaScript context
-            evaluateScript(mikelSource, "mikel");
-            
-            // Expose the mikel function as tapestry.utils.mikel
-            String setupScript = """
-                // Create tapestry.utils namespace if it doesn't exist
-                if (typeof tapestry.utils === 'undefined') {
-                    tapestry.utils = {};
-                }
-                
-                // Expose mikel function
-                tapestry.utils.mikel = mikel;
-                
-                // Log that mikel is available
-                console.log('Mikel templating library is now available as tapestry.utils.mikel');
-                """;
-            
-            evaluateScript(setupScript, "mikel-setup");
-            
-            LOGGER.info("Successfully loaded Mikel library version {}", MIKEL_VERSION);
-            
-        } catch (Exception e) {
-            LOGGER.error("Failed to load Mikel library", e);
-            throw new RuntimeException("Mikel library loading failed", e);
         }
     }
     

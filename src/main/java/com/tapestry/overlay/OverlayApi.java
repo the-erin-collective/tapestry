@@ -188,7 +188,7 @@ public class OverlayApi implements ProxyObject {
      * Processes a template string with data and returns validated UINode(s).
      * 
      * Expected args: [template, data]
-     * template: string - Mikel template string
+     * template: string - Template string with {{key}} placeholders
      * data: object - data for template interpolation (optional)
      */
     private Object processTemplate(Value[] args) {
@@ -200,23 +200,21 @@ public class OverlayApi implements ProxyObject {
         Object data = args.length > 1 ? TypeScriptRuntime.fromValue(args[1]) : null;
         
         try {
-            // Get Mikel from tapestry.utils.mikel (if available)
-            Value tapestry = (Value) TypeScriptRuntime.evalExpression("tapestry");
-            Value utils = tapestry.getMember("utils");
-            Value mikel = utils.getMember("mikel");
-            
-            // Check if Mikel is available
-            if (mikel == null || mikel.isNull()) {
-                throw new RuntimeException("Mikel templating library is not available - template processing requires Mikel");
-            }
-            
-            // Process template with Mikel
+            // Use basic string interpolation since mikel has been removed
             String renderedTemplate;
             if (data != null) {
-                Value dataValue = TypeScriptRuntime.toHostValue(data);
-                renderedTemplate = mikel.execute(template, dataValue).asString();
+                // Simple template interpolation - replace {{key}} with values
+                renderedTemplate = template;
+                if (data instanceof Map) {
+                    Map<?, ?> dataMap = (Map<?, ?>) data;
+                    for (Map.Entry<?, ?> entry : dataMap.entrySet()) {
+                        String key = entry.getKey().toString();
+                        String value = entry.getValue() != null ? entry.getValue().toString() : "";
+                        renderedTemplate = renderedTemplate.replace("{{" + key + "}}", value);
+                    }
+                }
             } else {
-                renderedTemplate = mikel.execute(template).asString();
+                renderedTemplate = template;
             }
             
             // Validate the rendered template

@@ -79,7 +79,10 @@ public class TsModRegistry {
         }
         
         discoveryComplete = true;
-        LOGGER.info("Mod discovery complete. Found {} mods.", mods.size());
+        
+        // Get actual mod count from the registry that's actually being used
+        int actualModCount = com.tapestry.mod.ModRegistry.getInstance().getAllModDescriptors().size();
+        LOGGER.info("Mod discovery complete. Found {} mods.", actualModCount);
     }
     
     /**
@@ -97,7 +100,10 @@ public class TsModRegistry {
         }
         
         loadingComplete = true;
-        LOGGER.info("Mod loading complete. All {} mods loaded successfully.", mods.size());
+        
+        // Get actual mod count from the registry that's actually being used
+        int actualModCount = com.tapestry.mod.ModRegistry.getInstance().getAllModDescriptors().size();
+        LOGGER.info("Mod loading complete. All {} mods loaded successfully.", actualModCount);
     }
     
     /**
