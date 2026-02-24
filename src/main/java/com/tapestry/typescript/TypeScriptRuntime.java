@@ -240,7 +240,6 @@ public class TypeScriptRuntime {
                 .allowCreateThread(false)
                 .allowNativeAccess(false)
                 .allowEnvironmentAccess(EnvironmentAccess.NONE)
-                .fileSystem(null)
                 .build();
             
             // Phase 17: Inject SafeTapestryBridge instead of full API
@@ -636,10 +635,19 @@ public class TypeScriptRuntime {
                 throw new RuntimeException("tapestry object is not accessible");
             }
             
-            // Check that mod.define exists (available in all phases)
-            Value modDefine = jsContext.eval("js", "typeof tapestry.mod.define");
-            if (!modDefine.asString().equals("function")) {
-                throw new RuntimeException("tapestry.mod.define is not a function");
+            // Phase-specific checks
+            if (phase == TapestryPhase.TS_LOAD) {
+                // In TS_LOAD, only the SafeTapestryBridge with call() method should be available
+                Value bridgeCall = jsContext.eval("js", "typeof tapestry.call");
+                if (!bridgeCall.asString().equals("function")) {
+                    throw new RuntimeException("tapestry.call is not available in TS_LOAD phase");
+                }
+            } else {
+                // In other phases, check that mod.define exists
+                Value modDefine = jsContext.eval("js", "typeof tapestry.mod.define");
+                if (!modDefine.asString().equals("function")) {
+                    throw new RuntimeException("tapestry.mod.define is not a function");
+                }
             }
             
             // Check that console functions exist (available in all phases)

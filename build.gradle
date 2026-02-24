@@ -1,6 +1,7 @@
 plugins {
     id 'fabric-loom' version '1.13-SNAPSHOT'
     id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
 version = project.version
@@ -40,11 +41,20 @@ dependencies {
     implementation 'org.graalvm.js:js:23.0.0'
     
     // Jackson for JSON handling
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    modImplementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
     testImplementation 'org.mockito:mockito-core:5.6.0'
+}
+
+// Create a resolvable configuration for Shadow that only includes our specific dependencies
+configurations {
+    shadowDeps {
+        extendsFrom implementation
+        canBeResolved = true
+        canBeConsumed = false
+    }
 }
 
 processResources {
@@ -56,7 +66,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = 21
+    it.options.release = 17
 }
 
 sourceSets {
@@ -192,4 +202,36 @@ task exportTypes {
             println "✅ TypeScript types embedded in JAR resources"
         }
     }
+}
+
+// Shadow configuration for GraalVM packaging
+shadowJar {
+    configurations = [project.configurations.shadowDeps]
+    
+    // Temporarily disable relocation to test GraalVM functionality
+    // relocate 'org.graalvm', 'com.tapestry.shadow.graalvm'
+    // relocate 'com.oracle.truffle', 'com.tapestry.shadow.truffle'
+    
+    // Exclude problematic dependencies that might cause version conflicts
+    exclude('META-INF/*.SF')
+    exclude('META-INF/*.DSA')
+    exclude('META-INF/*.RSA')
+    exclude('META-INF/DEPENDENCIES')
+    exclude('META-INF/LICENSE')
+    exclude('META-INF/NOTICE')
+    
+    // Temporarily disable minimization to avoid ServiceLoader issues
+    // minimize()
+    
+    archiveClassifier = 'shadow'
+    
+    // Ensure Java 21 compatibility
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+// Configure remapJar to use shadow output
+remapJar {
+    dependsOn shadowJar
+    inputFile = shadowJar.archiveFile
 }

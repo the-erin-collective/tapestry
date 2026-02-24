@@ -522,6 +522,18 @@ public class TapestryMod implements ModInitializer {
             throw new RuntimeException("Capability activation failed", e);
         }
         
+        // PERSISTENCE_READY: Initialize persistence layer
+        LOGGER.info("=== PERSISTENCE_READY PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.PERSISTENCE_READY);
+        
+        // Note: Storage directory will be determined when server starts
+        // For now, we'll initialize the persistence service as null
+        persistenceService = null; // Will be initialized in SERVER_STARTED hook
+        
+        // EVENT: Initialize event system
+        LOGGER.info("=== EVENT PHASE ===");
+        PhaseController.getInstance().advanceTo(TapestryPhase.EVENT);
+        
         // RUNTIME: Initialize Phase 6 services and begin gameplay
         initializeRuntimeServices();
     }
@@ -540,10 +552,6 @@ public class TapestryMod implements ModInitializer {
             configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
             stateService = new ModStateService();
             playerService = new PlayerService(null); // Will be updated with server instance later
-            
-            // Initialize Phase 9 persistence service
-            // Note: Storage directory will be determined when server starts
-            persistenceService = null; // Will be initialized in SERVER_STARTED hook
             
             // Update PlayersApi with actual PlayerService
             playersApi.setPlayerService(playerService);
