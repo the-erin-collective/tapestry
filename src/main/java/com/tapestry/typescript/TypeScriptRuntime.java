@@ -275,8 +275,8 @@ public class TypeScriptRuntime {
             console.put("log", (ProxyExecutable) args -> {
                 LOGGER.info("=== DIAGNOSTIC: Console.log called with {} arguments ===", args.length);
                 if (args.length > 0) {
-                    // Convert TruffleString to regular Java string
-                    String message = args[0].toString();
+                    // Convert TruffleString to regular Java string using Value.asString()
+                    String message = args[0].asString();
                     LOGGER.info("[JS LOG] {}", message);
                 } else {
                     LOGGER.info("[JS LOG] <no arguments>");
@@ -285,14 +285,14 @@ public class TypeScriptRuntime {
             });
             console.put("warn", (ProxyExecutable) args -> {
                 if (args.length > 0) {
-                    String message = args[0].toString();
+                    String message = args[0].asString();
                     LOGGER.warn("[JS WARN] {}", message);
                 }
                 return null;
             });
             console.put("error", (ProxyExecutable) args -> {
                 if (args.length > 0) {
-                    String message = args[0].toString();
+                    String message = args[0].asString();
                     LOGGER.error("[JS ERROR] {}", message);
                 }
                 return null;
@@ -1267,7 +1267,9 @@ public class TypeScriptRuntime {
                     try {
                         // Phase 15: Execute with exception handling
                         LOGGER.info("=== DIAGNOSTIC: Executing activate function for mod: {} ===", modId);
-                        mod.getActivateFunction().executeVoid();
+                        // Get tapestry object from JavaScript context and pass it to activate function
+                        Value tapestryObject = jsContext.getBindings("js").getMember("tapestry");
+                        mod.getActivateFunction().executeVoid(tapestryObject);
                         LOGGER.info("=== DIAGNOSTIC: Activate function completed successfully for mod: {} ===", modId);
                     } catch (Exception e) {
                         LOGGER.error("=== DIAGNOSTIC: Activate function threw exception for mod: {} ===", modId, e);
