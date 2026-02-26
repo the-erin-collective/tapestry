@@ -1,13 +1,21 @@
 package com.tapestry.networking;
 
-import net.minecraft.network.PacketByteBuf;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.codec.PacketCodecs;
 
-public record RpcCustomPayload(String json) {
+public record RpcCustomPayload(String json) implements CustomPayload {
 
-    public static final Identifier ID = Identifier.of("tapestry", "rpc");
+    public static final Id<CustomPayload> ID = new Id<>(Identifier.of("tapestry", "rpc"));
+    public static final PacketCodec<ByteBuf,RpcCustomPayload> CODEC = PacketCodec.tuple(
+        PacketCodecs.STRING, RpcCustomPayload::json,
+        RpcCustomPayload::new
+    );
 
-    public void write(PacketByteBuf buf) {
-        buf.writeString(json);
+    @Override
+    public Id<? extends CustomPayload> getId() {
+        return ID;
     }
 }

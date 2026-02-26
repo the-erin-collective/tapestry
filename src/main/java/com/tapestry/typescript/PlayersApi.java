@@ -28,6 +28,16 @@ public class PlayersApi {
     }
     
     /**
+     * Helper method to check if player service is available.
+     * @throws RuntimeException if player service is not available
+     */
+    private void ensurePlayerServiceAvailable() {
+        if (playerService == null) {
+            throw new RuntimeException("Player service is not available on client side");
+        }
+    }
+    
+    /**
      * Updates the PlayerService instance.
      * 
      * @param playerService the player service

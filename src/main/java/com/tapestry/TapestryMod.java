@@ -56,11 +56,14 @@ import com.tapestry.typescript.TypeScriptRuntime;
 import com.tapestry.typescript.PlayersApi;
 import com.tapestry.rpc.WatchRegistry;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +108,9 @@ public class TapestryMod implements ModInitializer {
     private static RpcPacketHandler rpcPacketHandler;
     private static RpcClientRuntime rpcClientRuntime;
     private static WatchRegistry watchRegistry;
+    
+    // Flag to track if client presentation has been initialized
+    private static volatile boolean clientPresentationInitialized = false;
     
     // Phase 3: Extension validation
     private static ExtensionValidationResult validationResult;
@@ -170,15 +176,22 @@ public class TapestryMod implements ModInitializer {
      * Registers Fabric API hooks for server lifecycle and player events.
      */
     private static void registerFabricHooks() {
-        // Server started hook - initialize PlayerService and PersistenceService
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+        LOGGER.info("registerFabricHooks() called - checking environment");
+        
+        // Check if we're on the server side before registering server events
+        // But also handle client-side integrated server case for CLIENT_PRESENTATION_READY
+        EnvType envType = FabricLoader.getInstance().getEnvironmentType();
+        LOGGER.info("Current environment detected: {}", envType);
+        
+        if (envType == EnvType.SERVER) {
+            // Server started hook - initialize PlayerService and PersistenceService
+            ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             LOGGER.info("Server started - initializing services");
             
-            // Initialize PlayerService with server instance
-            if (playerService != null) {
-                playerService.setServer(server);
-                LOGGER.info("PlayerService initialized with server instance");
-            }
+            // Initialize PlayerService now that we're on the server
+            playerService = new PlayerService(server);
+            playersApi.setPlayerService(playerService);
+            LOGGER.info("PlayerService initialized with server instance");
             
                         
             // Initialize Phase 9 persistence service BEFORE advancing to RUNTIME
@@ -224,8 +237,9 @@ public class TapestryMod implements ModInitializer {
             PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
             LOGGER.info("RUNTIME phase completed - Tapestry is ready");
             
-            // Initialize client presentation layer (Phase 10)
-            if (tsRuntime != null) {
+            // Initialize client presentation layer (Phase 10) - only on server side for dedicated servers
+            // For integrated servers, this will be handled by the client-side flag check
+            if (tsRuntime != null && envType == EnvType.SERVER) {
                 try {
                     // First advance to CLIENT_PRESENTATION_READY phase
                     PhaseController.getInstance().advanceTo(TapestryPhase.CLIENT_PRESENTATION_READY);
@@ -237,7 +251,7 @@ public class TapestryMod implements ModInitializer {
                     if (eventBus != null) {
                         try {
                             eventBus.emit("platform", "engine:runtimeStart", Map.of(
-                                "serverTicks", server.getTicks(),
+                                "serverTicks", 0,
                                 "timestamp", System.currentTimeMillis()
                             ));
                         } catch (Exception e) {
@@ -258,7 +272,7 @@ public class TapestryMod implements ModInitializer {
             // Emit Phase 11 engine:tick event
             if (eventBus != null) {
                 try {
-                    eventBus.emit("platform", "engine:tick", server.getTicks());
+                    eventBus.emit("platform", "engine:tick", 0);
                 } catch (Exception e) {
                     LOGGER.error("Error during engine:tick event emission", e);
                 }
@@ -266,7 +280,7 @@ public class TapestryMod implements ModInitializer {
             
             if (schedulerService != null) {
                 try {
-                    schedulerService.tick(server.getTicks());
+                    schedulerService.tick(0);
                 } catch (Exception e) {
                     LOGGER.error("Error during scheduler tick", e);
                 }
@@ -296,6 +310,58 @@ public class TapestryMod implements ModInitializer {
                     eventBus.emit("engine", "playerQuit", null);
                 } catch (Exception e) {
                     LOGGER.error("Error during player quit event", e);
+                }
+            }
+        });
+        } // End of server-side only events
+        
+        // Handle client-side integrated server case for CLIENT_PRESENTATION_READY phase
+        LOGGER.info("About to check client environment - envType: {}", envType);
+        if (envType == EnvType.CLIENT) {
+            LOGGER.info("Client environment detected - registering integrated server startup handler");
+            
+            // Register for integrated server startup to trigger CLIENT_PRESENTATION_READY
+            ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+                LOGGER.info("Integrated server started event received - will initialize client presentation layer");
+                
+                // Just advance the phase - client presentation will be handled by client-side events
+                try {
+                    PhaseController.getInstance().advanceTo(TapestryPhase.CLIENT_PRESENTATION_READY);
+                    LOGGER.info("CLIENT_PRESENTATION_READY phase advanced (integrated server)");
+                } catch (Exception e) {
+                    LOGGER.error("Failed to advance to CLIENT_PRESENTATION_READY phase", e);
+                }
+            });
+        } else {
+            LOGGER.info("Non-client environment detected ({}) - skipping integrated server handler registration", envType);
+        }
+        
+        // Add client-side initialization check using server tick events (runs on both threads)
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (envType == EnvType.CLIENT && !clientPresentationInitialized) {
+                var currentPhase = PhaseController.getInstance().getCurrentPhase();
+                if (currentPhase == TapestryPhase.CLIENT_PRESENTATION_READY && tsRuntime != null) {
+                    try {
+                        // Mark as initialized to prevent duplicate calls
+                        clientPresentationInitialized = true;
+                        
+                        // Emit Phase 11 engine:runtimeStart event
+                        if (eventBus != null) {
+                            try {
+                                eventBus.emit("platform", "engine:runtimeStart", Map.of(
+                                    "serverTicks", 0,
+                                    "timestamp", System.currentTimeMillis()
+                                ));
+                                LOGGER.info("engine:runtimeStart event emitted successfully");
+                            } catch (Exception e) {
+                                LOGGER.error("Error during engine:runtimeStart event emission", e);
+                            }
+                        }
+                        
+                        LOGGER.info("CLIENT_PRESENTATION_READY phase completed (integrated server)");
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to initialize client presentation layer", e);
+                    }
                 }
             }
         });
@@ -488,6 +554,21 @@ public class TapestryMod implements ModInitializer {
             modRegistry.completeDiscovery();
             
             LOGGER.info("TypeScript capability registration complete");
+        
+        // Build activation order after all mods are registered
+        ModRegistry modRegistry = ModRegistry.getInstance();
+        modRegistry.validateDependencies();
+        LOGGER.info("=== DIAGNOSTIC: Dependencies validated in TS_REGISTER phase ===");
+        
+        List<ModDescriptor> activationOrder = modRegistry.buildActivationOrder();
+        LOGGER.info("=== DIAGNOSTIC: Built activation order with {} mods in TS_REGISTER phase ===", activationOrder.size());
+        for (ModDescriptor mod : activationOrder) {
+            LOGGER.info("=== DIAGNOSTIC: Mod in activation order: {} (has activate: {}) ===", 
+                mod.getId(), mod.hasActivateFunction());
+        }
+        
+        // Store activation order for TS_ACTIVATE phase
+        tsRuntime.setStoredActivationOrder(activationOrder);
         } catch (Exception e) {
             LOGGER.error("Failed during capability registration phase", e);
             throw new RuntimeException("Capability registration failed", e);
@@ -496,6 +577,16 @@ public class TapestryMod implements ModInitializer {
         // TS_ACTIVATE: Validate and resolve capabilities
         LOGGER.info("=== TS_ACTIVATE PHASE ===");
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_ACTIVATE);
+        
+        // Extend runtime for activation on client side
+        if (tsRuntime != null) {
+            try {
+                tsRuntime.extendForActivation();
+            } catch (Exception e) {
+                LOGGER.error("Failed to extend TypeScript runtime for TS_ACTIVATE on client", e);
+                throw new RuntimeException("TypeScript runtime activation failed", e);
+            }
+        }
         
         try {
             // Validate capabilities and resolve dependency graph
@@ -597,14 +688,16 @@ public class TapestryMod implements ModInitializer {
         PhaseController.getInstance().advanceTo(TapestryPhase.RUNTIME);
         
         try {
-            // Initialize Phase 6 services
+            // Initialize client-safe Phase 6 services
             schedulerService = new SchedulerService();
             eventBus = new EventBus();
             configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
             stateService = new ModStateService();
-            playerService = new PlayerService(null); // Will be updated with server instance later
             
-            // Update PlayersApi with actual PlayerService
+            // PlayerService will be initialized later in SERVER_STARTED event
+            playerService = null;
+            
+            // Update PlayersApi with null for now (will be updated in SERVER_STARTED)
             playersApi.setPlayerService(playerService);
             
             // Load configurations for all mods
@@ -852,15 +945,13 @@ public class TapestryMod implements ModInitializer {
             // Create packet handler
             rpcPacketHandler = new RpcPacketHandler(rpcServerRuntime, handshakeHandler);
             
-            // TODO: Re-enable networking after fixing API compatibility
             // Register network channel using working packet system
-            // ServerPlayNetworking.registerGlobalReceiver(RpcCustomPayload.ID,
-            //     (server, player, handler, buf, sender) -> {
-            //         String json = buf.readString(32767);
-            //         server.execute(() -> {
-            //             rpcPacketHandler.handle(player, json);
-            //         });
-            //     });
+            ServerPlayNetworking.registerGlobalReceiver(RpcCustomPayload.ID,
+                (payload, context) -> {
+                    if (payload instanceof RpcCustomPayload rpcPayload) {
+                        rpcPacketHandler.handle(context.player(), rpcPayload.json());
+                    }
+                });
             
             // Register client-side packet handler for integrated server
             if (!server.isDedicated()) {

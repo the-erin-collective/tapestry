@@ -154,7 +154,7 @@ task downloadMikel {
             def sourceFile = file("${extractedDir}/index.js")
             
             if (!sourceFile.exists()) {
-                throw new GradleException("Mikel index.js not found in extracted archive at ${sourceFile.absolutePath}")
+                throw new Exception("Mikel index.js not found in extracted archive at ${sourceFile.absolutePath}")
             }
             
             // Copy to resources
@@ -173,7 +173,7 @@ task downloadMikel {
             
         } catch (Exception e) {
             delete tempDir
-            throw new GradleException("Failed to download and embed Mikel library: ${e.message}", e)
+            throw new Exception("Failed to download and embed Mikel library: ${e.message}", e)
         }
     }
 }

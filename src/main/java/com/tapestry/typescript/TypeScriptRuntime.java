@@ -63,7 +63,8 @@ public class TypeScriptRuntime {
     private static ExtensionTypeRegistry typeRegistry;
     
     // Phase 15: Extension lifecycle management
-    private static ExtensionLifecycleManager lifecycleManager;
+    private ExtensionLifecycleManager lifecycleManager;
+    private List<ModDescriptor> storedActivationOrder;
     
     private static Context jsContext;
     private static boolean initialized = false;
@@ -269,6 +270,37 @@ public class TypeScriptRuntime {
             LOGGER.info("=== DIAGNOSTIC: Bridge injection context identity: {}", System.identityHashCode(jsContext));
             jsContext.getBindings("js").putMember("tapestry", tapestryObject);
             
+            // Add console object to JavaScript bindings
+            Map<String, Object> console = new HashMap<>();
+            console.put("log", (ProxyExecutable) args -> {
+                LOGGER.info("=== DIAGNOSTIC: Console.log called with {} arguments ===", args.length);
+                if (args.length > 0) {
+                    // Convert TruffleString to regular Java string
+                    String message = args[0].toString();
+                    LOGGER.info("[JS LOG] {}", message);
+                } else {
+                    LOGGER.info("[JS LOG] <no arguments>");
+                }
+                return null;
+            });
+            console.put("warn", (ProxyExecutable) args -> {
+                if (args.length > 0) {
+                    String message = args[0].toString();
+                    LOGGER.warn("[JS WARN] {}", message);
+                }
+                return null;
+            });
+            console.put("error", (ProxyExecutable) args -> {
+                if (args.length > 0) {
+                    String message = args[0].toString();
+                    LOGGER.error("[JS ERROR] {}", message);
+                }
+                return null;
+            });
+            
+            jsContext.getBindings("js").putMember("console", ProxyObject.fromMap(console));
+            LOGGER.info("=== DIAGNOSTIC: Console object added to JavaScript bindings ===");
+            
             LOGGER.info("=== DIAGNOSTIC: Bindings after injection: {}", jsContext.getBindings("js").getMemberKeys());
             
             // Store API and hookRegistry for later extension in TS_READY
@@ -341,8 +373,11 @@ public class TypeScriptRuntime {
         // Create console namespace with ProxyExecutable functions
         Map<String, Object> console = new HashMap<>();
         console.put("log", (ProxyExecutable) args -> {
+            LOGGER.info("=== DIAGNOSTIC: Console.log called with {} arguments ===", args.length);
             if (args.length > 0) {
                 LOGGER.info("[JS LOG] {}", args[0]);
+            } else {
+                LOGGER.info("[JS LOG] <no arguments>");
             }
             return null;
         });
@@ -987,6 +1022,15 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Sets the stored activation order for use in TS_ACTIVATE phase.
+     * 
+     * @param activationOrder the activation order to store
+     */
+    public void setStoredActivationOrder(List<ModDescriptor> activationOrder) {
+        this.storedActivationOrder = activationOrder;
+    }
+    
+    /**
      * Extends the tapestry object for TS_ACTIVATE phase.
      * This should be called when transitioning to TS_ACTIVATE phase.
      */
@@ -998,20 +1042,23 @@ public class TypeScriptRuntime {
         }
         
         try {
-            LOGGER.info("Extending TypeScript runtime for TS_ACTIVATE phase");
-            
-            // Get mod registry and create lifecycle manager
-            ModRegistry modRegistry = ModRegistry.getInstance();
-            
-            // Phase 15: Create lifecycle manager to wrap mod registry
-            if (lifecycleManager == null) {
-                lifecycleManager = ExtensionLifecycleManager.create(modRegistry);
-                LOGGER.info("Phase 15: ExtensionLifecycleManager created");
-            }
-            
-            modRegistry.validateDependencies();
-            List<ModDescriptor> activationOrder = modRegistry.buildActivationOrder();
-            modRegistry.beginActivation();
+                LOGGER.info("Extending TypeScript runtime for TS_ACTIVATE phase");
+                
+                // Get mod registry and create lifecycle manager
+                ModRegistry modRegistry = ModRegistry.getInstance();
+                
+                // Phase 15: Create lifecycle manager to wrap mod registry
+                if (lifecycleManager == null) {
+                    lifecycleManager = ExtensionLifecycleManager.create(modRegistry);
+                    LOGGER.info("Phase 15: ExtensionLifecycleManager created");
+                }
+                
+                // Use stored activation order from TS_REGISTER phase
+                List<ModDescriptor> activationOrder = this.storedActivationOrder;
+                if (activationOrder == null) {
+                    throw new IllegalStateException("Activation order not stored from TS_REGISTER phase");
+                }
+                LOGGER.info("=== DIAGNOSTIC: Using stored activation order with {} mods ===", activationOrder.size());
             
             // Phase 15: Initialize all extensions to DISCOVERED state
             Set<String> extensionIds = new HashSet<>();
@@ -1215,13 +1262,21 @@ public class TypeScriptRuntime {
                 mod.setState(ModDescriptor.ModState.ACTIVATING);
                 
                 if (mod.hasActivateFunction()) {
+                    LOGGER.info("=== DIAGNOSTIC: About to call activate function for mod: {} ===", modId);
                     setExecutionContext(modId, ExecutionContextMode.ON_LOAD, mod.getSourcePath());
                     try {
                         // Phase 15: Execute with exception handling
+                        LOGGER.info("=== DIAGNOSTIC: Executing activate function for mod: {} ===", modId);
                         mod.getActivateFunction().executeVoid();
+                        LOGGER.info("=== DIAGNOSTIC: Activate function completed successfully for mod: {} ===", modId);
+                    } catch (Exception e) {
+                        LOGGER.error("=== DIAGNOSTIC: Activate function threw exception for mod: {} ===", modId, e);
+                        throw e;
                     } finally {
                         clearExecutionContext();
                     }
+                } else {
+                    LOGGER.info("=== DIAGNOSTIC: Mod {} has no activate function ===", modId);
                 }
                 
                 mod.setState(ModDescriptor.ModState.ACTIVE);

@@ -3,12 +3,11 @@ package com.tapestry.rpc;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.tapestry.networking.RpcCustomPayload;
-import net.minecraft.network.PacketByteBuf;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 /**
  * Utility for sending server events to specific clients.
@@ -44,11 +43,9 @@ public class ServerEventSender {
             
             String packetData = packet.toString();
             
-            // TODO: Re-enable networking after fixing API compatibility
-            // Send using simple buffer approach
-            // PacketByteBuf buf = PacketByteBufs.create();
-            // buf.writeString(packet.toString());
-            // player.networkHandler.sendPacket(new CustomPayloadS2CPacket(RpcCustomPayload.ID, buf));
+            // Send using the custom payload record
+            RpcCustomPayload customPayload = new RpcCustomPayload(packetData);
+            player.networkHandler.sendPacket(new CustomPayloadS2CPacket(customPayload));
             
         } catch (Exception e) {
             LOGGER.error("Failed to send server event to player: " + player.getName().getString(), e);

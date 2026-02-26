@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.tapestry.networking.RpcCustomPayload;
-import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 /**
@@ -87,11 +87,9 @@ public class RpcResponseSender {
         try {
             String packetData = packet.toString();
             
-            // TODO: Re-enable networking after fixing API compatibility
-            // Send using simple buffer approach
-            // PacketByteBuf buf = PacketByteBufs.create();
-            // buf.writeString(packet.toString());
-            // player.networkHandler.sendPacket(new CustomPayloadS2CPacket(RpcCustomPayload.ID, buf));
+            // Create RpcCustomPayload and send using new API
+            RpcCustomPayload payload = new RpcCustomPayload(packetData);
+            player.networkHandler.sendPacket(new CustomPayloadS2CPacket(payload));
                 
         } catch (Exception e) {
             LOGGER.error("Failed to send RPC packet to player: {}", player.getName().getString(), e);
