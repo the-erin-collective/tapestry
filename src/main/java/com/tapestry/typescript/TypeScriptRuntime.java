@@ -261,6 +261,24 @@ public class TypeScriptRuntime {
             });
             modObject.putMember("define", defineFunctionValue);
             
+            // Add on method for event registration
+            Value onFunctionValue = jsContext.asValue((ProxyExecutable) args -> {
+                if (args.length != 3) {
+                    throw new IllegalArgumentException("tapestry.mod.on requires exactly 3 arguments: category, event, callback");
+                }
+                String category = args[0].asString();
+                String event = args[1].asString();
+                Value callback = args[2];
+                
+                LOGGER.info("=== DIAGNOSTIC: Event registration - category: {}, event: {} ===", category, event);
+                
+                // For now, just log the registration - actual event handling would be implemented here
+                // TODO: Implement proper event registration and handling
+                
+                return null;
+            });
+            modObject.putMember("on", onFunctionValue);
+            
             // Create tapestry object with both bridge and mod
             Value tapestryObject = jsContext.eval("js", "({})");
             tapestryObject.putMember("bridge", bridge);
@@ -996,6 +1014,23 @@ public class TypeScriptRuntime {
             // Create mod namespace with define API
             Map<String, Object> modNamespace = new HashMap<>();
             modNamespace.put("define", createModDefineFunction(ModRegistry.getInstance()));
+            
+            // Add on method for event registration
+            modNamespace.put("on", (ProxyExecutable) args -> {
+                if (args.length != 3) {
+                    throw new IllegalArgumentException("tapestry.mod.on requires exactly 3 arguments: category, event, callback");
+                }
+                String category = args[0].asString();
+                String event = args[1].asString();
+                Value callback = args[2];
+                
+                LOGGER.info("=== DIAGNOSTIC: Event registration - category: {}, event: {} ===", category, event);
+                
+                // For now, just log the registration - actual event handling would be implemented here
+                // TODO: Implement proper event registration and handling
+                
+                return null;
+            });
             
             // Add Phase 13 capability API to mod namespace during TS_REGISTER only
             com.tapestry.typescript.CapabilityApi capabilityApi = new com.tapestry.typescript.CapabilityApi();
