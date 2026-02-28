@@ -349,6 +349,16 @@ public class TapestryMod implements ModInitializer {
                         // Mark as initialized to prevent duplicate calls
                         clientPresentationInitialized = true;
                         
+                        // Extend runtime for CLIENT_PRESENTATION_READY phase (missing!)
+                        if (tsRuntime != null) {
+                            try {
+                                tsRuntime.extendForClientPresentation();
+                                LOGGER.info("TypeScript runtime extended for CLIENT_PRESENTATION_READY (client-side)");
+                            } catch (Exception e) {
+                                LOGGER.error("Failed to extend TypeScript runtime for CLIENT_PRESENTATION_READY", e);
+                            }
+                        }
+                        
                         // Emit Phase 11 engine:runtimeStart event
                         if (eventBus != null) {
                             try {

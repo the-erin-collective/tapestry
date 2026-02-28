@@ -953,6 +953,14 @@ public class TypeScriptRuntime {
             // Add overlay API to client namespace
             clientValue.putMember("overlay", overlayApi.createNamespace());
             
+            // Call TWILA's global registration function when APIs are available
+            try {
+                jsContext.eval("js", "if (typeof twilaRegisterEvents === 'function') { twilaRegisterEvents(); }");
+                LOGGER.info("Called TWILA's global registration function");
+            } catch (Exception e) {
+                LOGGER.debug("TWILA global function not available or failed: " + e.getMessage());
+            }
+            
             // Initialize overlay renderer
             com.tapestry.overlay.OverlayRenderer.getInstance(overlayRegistry);
             
