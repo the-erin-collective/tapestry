@@ -4,6 +4,7 @@ import com.tapestry.rpc.ServerApiRegistry;
 import com.tapestry.rpc.ServerApiMethod;
 import com.tapestry.rpc.client.RpcClientRuntime;
 import com.tapestry.rpc.client.ClientEventRegistry;
+import com.tapestry.ServerContext;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
@@ -25,9 +26,6 @@ public class RpcApi {
     
     // Client-side runtime
     private static RpcClientRuntime clientRuntime;
-    
-    // Server instance for emitTo functionality
-    private static net.minecraft.server.MinecraftServer currentServer;
     
     // Watch registry for watch functionality
     private static com.tapestry.rpc.WatchRegistry watchRegistry;
@@ -51,9 +49,11 @@ public class RpcApi {
     
     /**
      * Sets the current server instance for emitTo functionality.
+     * @deprecated Use ServerContext.setCurrentServer() instead
      */
+    @Deprecated
     public static void setServer(net.minecraft.server.MinecraftServer server) {
-        currentServer = server;
+        ServerContext.setCurrentServer(server);
     }
     
     /**
@@ -229,11 +229,10 @@ public class RpcApi {
         // Get current server - this needs to be accessible from context
         // For now, we'll use a placeholder approach
         try {
-            // This would need access to the current server instance
-            // TODO: Make server accessible through context or service locator
-            net.minecraft.server.MinecraftServer server = currentServer;
+            // Get server from ServerContext instead of static field
+            net.minecraft.server.MinecraftServer server = ServerContext.getCurrentServer();
             if (server == null) {
-                throw new RuntimeException("No server instance available for emitTo");
+                throw new RuntimeException("No server instance available for emitTo - use ServerContext.setCurrentServer()");
             }
             
             // Resolve player
@@ -312,9 +311,9 @@ public class RpcApi {
         }
         
         // Get current server
-        net.minecraft.server.MinecraftServer server = currentServer;
+        net.minecraft.server.MinecraftServer server = ServerContext.getCurrentServer();
         if (server == null) {
-            throw new RuntimeException("No server instance available for watch.register");
+            throw new RuntimeException("No server instance available for watch.register - use ServerContext.setCurrentServer()");
         }
         
         // Resolve player
@@ -355,9 +354,9 @@ public class RpcApi {
         }
         
         // Get current server
-        net.minecraft.server.MinecraftServer server = currentServer;
+        net.minecraft.server.MinecraftServer server = ServerContext.getCurrentServer();
         if (server == null) {
-            throw new RuntimeException("No server instance available for watch.unregister");
+            throw new RuntimeException("No server instance available for watch.unregister - use ServerContext.setCurrentServer()");
         }
         
         // Resolve player

@@ -12,8 +12,6 @@ import net.minecraft.network.PacketByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.tapestry.networking.RpcCustomPayload;
-
 /**
  * Phase 16.5: Secure RPC packet handler with pre-deserialization limits.
  * Enforces size limits before JSON parsing to prevent memory bombs.

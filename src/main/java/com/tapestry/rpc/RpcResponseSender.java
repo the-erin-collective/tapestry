@@ -3,12 +3,10 @@ package com.tapestry.rpc;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import com.tapestry.networking.RpcPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.tapestry.networking.RpcCustomPayload;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 /**
  * Utility for sending RPC responses from server to client.
@@ -24,8 +22,8 @@ public class RpcResponseSender {
     public static void sendSuccess(ServerPlayerEntity player, String id, JsonElement result) {
         JsonObject response = new JsonObject();
         response.addProperty("protocol", PROTOCOL_VERSION);
-        response.addProperty("type", "rpc_response");
-        response.addProperty("id", id);
+        response.addProperty("type", "response");
+        response.addProperty("requestId", id);
         response.addProperty("success", true);
         
         if (result != null) {
@@ -45,8 +43,8 @@ public class RpcResponseSender {
     public static void sendError(ServerPlayerEntity player, String id, String code, String message) {
         JsonObject response = new JsonObject();
         response.addProperty("protocol", PROTOCOL_VERSION);
-        response.addProperty("type", "rpc_response");
-        response.addProperty("id", id);
+        response.addProperty("type", "response");
+        response.addProperty("requestId", id);
         response.addProperty("success", false);
         
         JsonObject error = new JsonObject();
@@ -66,18 +64,18 @@ public class RpcResponseSender {
     public static void sendServerEvent(ServerPlayerEntity player, String eventName, JsonElement payload) {
         JsonObject response = new JsonObject();
         response.addProperty("protocol", PROTOCOL_VERSION);
-        response.addProperty("type", "server_event");
-        response.addProperty("event", eventName);
+        response.addProperty("type", "event");
+        response.addProperty("channel", eventName);
         
         if (payload != null) {
-            response.add("payload", payload);
+            response.add("data", payload);
         } else {
-            response.add("payload", null);
+            response.add("data", null);
         }
         
         sendPacket(player, response);
         
-        LOGGER.debug("Server event sent: player={}, event={}", player.getName().getString(), eventName);
+        LOGGER.debug("Server event sent: player={}, channel={}", player.getName().getString(), eventName);
     }
     
     /**
@@ -87,9 +85,8 @@ public class RpcResponseSender {
         try {
             String packetData = packet.toString();
             
-            // Create RpcCustomPayload and send using new API
-            RpcCustomPayload payload = new RpcCustomPayload(packetData);
-            player.networkHandler.sendPacket(new CustomPayloadS2CPacket(payload));
+            // Send using modern payload system
+            ServerPlayNetworking.send(player, new RpcPayload(packetData));
                 
         } catch (Exception e) {
             LOGGER.error("Failed to send RPC packet to player: {}", player.getName().getString(), e);

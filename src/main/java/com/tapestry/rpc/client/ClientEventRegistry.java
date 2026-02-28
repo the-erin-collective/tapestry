@@ -58,6 +58,26 @@ public class ClientEventRegistry {
     }
     
     /**
+     * Removes all event handlers for a specific event name.
+     * 
+     * @param eventName The event name to unsubscribe from
+     * @return true if handlers were removed, false if no handlers were found
+     */
+    public boolean unsubscribe(String eventName) {
+        List<EventHandler> eventHandlers = handlers.remove(eventName);
+        boolean removed = eventHandlers != null && !eventHandlers.isEmpty();
+        
+        if (removed) {
+            LOGGER.debug("Unsubscribed all handlers for event: {} (removed {} handlers)", 
+                        eventName, eventHandlers.size());
+        } else {
+            LOGGER.debug("No handlers found to unsubscribe for event: {}", eventName);
+        }
+        
+        return removed;
+    }
+    
+    /**
      * Gets the number of handlers for an event.
      */
     public int getHandlerCount(String eventName) {

@@ -125,6 +125,25 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Sets up a test context for unit testing.
+     * This method should only be used in test code.
+     * 
+     * @param modId The mod ID to use for testing
+     * @param source The source file name to use for testing
+     */
+    public static void setTestContext(String modId, String source) {
+        currentContext.set(new ExecutionContext(modId, ExecutionContextMode.ON_LOAD, source));
+    }
+    
+    /**
+     * Clears the test context.
+     * This method should only be used in test code.
+     */
+    public static void clearTestContext() {
+        currentContext.set(new ExecutionContext(null, ExecutionContextMode.NONE, null));
+    }
+    
+    /**
      * Gets the current mod ID from the execution context.
      * 
      * @return the current mod ID or null if not in a mod context
@@ -272,8 +291,16 @@ public class TypeScriptRuntime {
                 
                 LOGGER.info("=== DIAGNOSTIC: Event registration - category: {}, event: {} ===", category, event);
                 
-                // For now, just log the registration - actual event handling would be implemented here
-                // TODO: Implement proper event registration and handling
+                // Implement proper event registration and handling
+                EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
+                if (eventBus != null) {
+                    // For bridge events, use "bridge" as modId namespace
+                    String fullEventName = category + ":" + event;
+                    eventBus.subscribe("bridge", fullEventName, callback);
+                    LOGGER.debug("Bridge event registered: {} for category: {}", fullEventName, category);
+                } else {
+                    LOGGER.warn("EventBus not available - cannot register bridge event: {}:{}", category, event);
+                }
                 
                 return null;
             });
@@ -1026,8 +1053,17 @@ public class TypeScriptRuntime {
                 
                 LOGGER.info("=== DIAGNOSTIC: Event registration - category: {}, event: {} ===", category, event);
                 
-                // For now, just log the registration - actual event handling would be implemented here
-                // TODO: Implement proper event registration and handling
+                // Implement proper event registration and handling
+                EventBus eventBus = com.tapestry.TapestryMod.getEventBus();
+                if (eventBus != null) {
+                    // For mod events, use current mod ID from execution context
+                    String modId = getCurrentModId();
+                    String fullEventName = category + ":" + event;
+                    eventBus.subscribe(modId, fullEventName, callback);
+                    LOGGER.debug("Mod event registered: {} for mod: {}", fullEventName, modId);
+                } else {
+                    LOGGER.warn("EventBus not available - cannot register mod event: {}:{}", category, event);
+                }
                 
                 return null;
             });
@@ -1104,13 +1140,42 @@ public class TypeScriptRuntime {
             
             // Phase 14: Authorize type imports for all mods
             if (typeIntegration != null) {
-                for (ModDescriptor mod : activationOrder) {
-                    // Get extension descriptor for this mod
-                    // Note: This would need to be wired up with actual extension data
-                    // For now, we'll authorize based on mod dependencies
+                // Get extension validation result from TapestryMod
+                var validationResult = com.tapestry.TapestryMod.getStaticValidationResult();
+                if (validationResult != null) {
                     var typeResolver = typeIntegration.getTypeResolver();
-                    // TODO: Wire with actual extension typeImports data
-                    LOGGER.debug("Phase 14: Would authorize type imports for mod: {}", mod.getId());
+                    
+                    for (ModDescriptor mod : activationOrder) {
+                        // Check if this mod has an extension descriptor
+                        var extensionOpt = validationResult.enabled().values().stream()
+                            .filter(ext -> ext.descriptor().id().equals(mod.getId()))
+                            .findFirst();
+                        
+                        if (extensionOpt.isPresent()) {
+                            var extension = extensionOpt.get();
+                            var descriptor = extension.descriptor();
+                            
+                            // Authorize type imports from this extension's descriptor
+                            if (descriptor.typeImports() != null && !descriptor.typeImports().isEmpty()) {
+                                LOGGER.debug("Phase 14: Authorizing type imports for mod: {} from: {}", 
+                                           mod.getId(), descriptor.typeImports());
+                                
+                                try {
+                                    // Authorize all type imports at once
+                                    typeResolver.authorizeTypeImports(mod.getId(), descriptor.typeImports());
+                                    LOGGER.debug("Authorized type imports for mod: {} from {} extensions", 
+                                               mod.getId(), descriptor.typeImports().size());
+                                } catch (Exception e) {
+                                    LOGGER.warn("Failed to authorize type imports for mod {}: {}", 
+                                              mod.getId(), e.getMessage());
+                                }
+                            }
+                        } else {
+                            LOGGER.debug("Phase 14: No extension descriptor found for mod: {}", mod.getId());
+                        }
+                    }
+                } else {
+                    LOGGER.warn("Phase 14: No validation result available - cannot authorize type imports");
                 }
             }
             

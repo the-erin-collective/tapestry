@@ -1,6 +1,10 @@
 package com.tapestry.client;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import com.tapestry.networking.RpcPayload;
+import com.tapestry.networking.RpcPayloadCodec;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import com.tapestry.lifecycle.TapestryPhase;
 import com.tapestry.lifecycle.PhaseController;
 import org.slf4j.Logger;
@@ -22,6 +26,33 @@ public class TapestryClient implements ClientModInitializer {
         LOGGER.info("Client-side initialization started");
         
         try {
+            // Register client-side payload types (MUST be during init)
+            PayloadTypeRegistry.playS2C().register(
+                RpcPayload.ID,
+                RpcPayloadCodec.CODEC
+            );
+            
+            PayloadTypeRegistry.playC2S().register(
+                RpcPayload.ID,
+                RpcPayloadCodec.CODEC
+            );
+            
+            // Register client receiver (CORRECT 1.21.11 SIGNATURE)
+            ClientPlayNetworking.registerGlobalReceiver(
+                RpcPayload.ID,
+                (payload, context) -> {
+                    String json = payload.json();
+                    
+                    // CRITICAL: Hop back to client thread
+                    context.client().execute(() -> {
+                        // Use public static handle method
+                        com.tapestry.rpc.client.RpcClientRuntime.handle(json);
+                    });
+                }
+            );
+            
+            LOGGER.info("Client RPC receiver registered");
+            
             // Check if phase is already CLIENT_PRESENTATION_READY before advancing
             var currentPhase = PhaseController.getInstance().getCurrentPhase();
             if (currentPhase != TapestryPhase.CLIENT_PRESENTATION_READY) {

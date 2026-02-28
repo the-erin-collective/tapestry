@@ -17,6 +17,9 @@
   "entrypoints": {
     "main": [
       "com.tapestry.TapestryMod"
+    ],
+    "server": [
+      "com.tapestry.TapestryServer"
     ]
   },
   "depends": {

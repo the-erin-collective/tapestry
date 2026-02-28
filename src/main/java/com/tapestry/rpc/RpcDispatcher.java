@@ -1,12 +1,17 @@
 package com.tapestry.rpc;
 
 import com.google.gson.JsonElement;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Secure RPC dispatcher for executing server API methods.
@@ -16,11 +21,16 @@ import java.util.Set;
 public class RpcDispatcher {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(RpcDispatcher.class);
+    private static final Gson gson = new Gson();
     
     // Client installed mods for namespace validation
     private Set<String> clientInstalledMods;
     
-    public RpcDispatcher() {
+    // Server instance for context creation
+    private MinecraftServer server;
+    
+    public RpcDispatcher(MinecraftServer server) {
+        this.server = server;
         this.clientInstalledMods = Set.of(); // TODO: Get from handshake
         LOGGER.info("Secure RPC Dispatcher initialized");
     }
@@ -89,33 +99,31 @@ public class RpcDispatcher {
      */
     private void execute(ServerPlayerEntity player, String id, ServerApiMethod method, Object sanitizedArgs) {
         try {
-            // TODO: Fix mapping issues - temporarily disabled
-            // ServerContext ctx = new ServerContext(player, player.server, player.getUuid());
+            ServerContext ctx = new ServerContext(player, this.server, player.getUuid());
             
-            // TODO: Re-enable when mapping issues are fixed
-            // CompletableFuture<Object> future = method.invoke(ctx, sanitizedArgs);
+            CompletableFuture<Object> future = method.invoke(ctx, (Map<String, Object>) sanitizedArgs);
             
-            // TODO: Re-enable when mapping issues are fixed
-            // future.whenComplete((result, throwable) -> {
-            //     if (throwable != null) {
-            //         LOGGER.error("RPC method {} threw exception for player: {}", 
-            //                    method.getModId() + ":" + method.getMethodName(), 
-            //                    player.getName().getString(), throwable);
-            //         RpcResponseSender.sendError(player, id, "USER_ERROR", throwable.getMessage());
-            //     } else {
-            //         // Security: Sanitize return value
-            //         Object sanitizedResult;
-            //         try {
-            //             sanitizedResult = RpcSanitizer.sanitize(result);
-            //             RpcResponseSender.sendSuccess(player, id, sanitizedResult);
-            //         } catch (RpcValidationException e) {
-            //             LOGGER.error("RPC method {} returned invalid data for player {}: {}", 
-            //                        method.getModId() + ":" + method.getMethodName(), 
-            //                        player.getName().getString(), e.getMessage());
-            //             RpcResponseSender.sendError(player, id, "INVALID_RETURN", "Method returned invalid data");
-            //         }
-            //     }
-            // });
+            future.whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    LOGGER.error("RPC method {} threw exception for player: {}", 
+                               method.getModId() + ":" + method.getMethodName(), 
+                               player.getName().getString(), throwable);
+                    RpcResponseSender.sendError(player, id, "USER_ERROR", throwable.getMessage());
+                } else {
+                    // Security: Sanitize return value
+                    Object sanitizedResult;
+                    try {
+                        sanitizedResult = RpcSanitizer.sanitize(result);
+                        JsonElement resultJson = gson.toJsonTree(sanitizedResult);
+                        RpcResponseSender.sendSuccess(player, id, resultJson);
+                    } catch (Exception e) {
+                        LOGGER.error("RPC method {} returned invalid data for player {}: {}", 
+                                   method.getModId() + ":" + method.getMethodName(), 
+                                   player.getName().getString(), e.getMessage());
+                        RpcResponseSender.sendError(player, id, "INVALID_RETURN", "Method returned invalid data");
+                    }
+                }
+            });
             
         } catch (Exception e) {
             LOGGER.error("Error executing RPC method {} for player: {}", 

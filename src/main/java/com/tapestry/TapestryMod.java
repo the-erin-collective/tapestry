@@ -8,6 +8,7 @@ import com.tapestry.extensions.ExtensionState;
 import com.tapestry.extensions.LifecycleViolationException;
 import com.tapestry.extensions.CapabilityDecl;
 import com.tapestry.extensions.CapabilityType;
+import com.tapestry.runtime.RuntimeContextFactory;
 import com.tapestry.extensions.TapestryExtensionDescriptor;
 import com.tapestry.extensions.ValidatedExtension;
 import com.tapestry.extensions.ExtensionValidator;
@@ -42,7 +43,6 @@ import com.tapestry.rpc.HandshakeRegistry;
 import com.tapestry.rpc.HandshakeHandler;
 import com.tapestry.rpc.RpcServerRuntime;
 import com.tapestry.rpc.RpcPacketHandler;
-import com.tapestry.networking.RpcCustomPayload;
 import com.tapestry.rpc.client.RpcClientRuntime;
 import com.tapestry.api.TapestryAPI;
 import com.tapestry.cli.TypeExportCommand;
@@ -60,8 +60,12 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.server.network.ServerPlayerEntity;
+import com.tapestry.networking.RpcPayload;
+import com.tapestry.networking.RpcPayloadCodec;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.Identifier;
@@ -307,9 +311,9 @@ public class TapestryMod implements ModInitializer {
                     // Create player event context using RuntimeContextFactory
                     var player = handler.getPlayer();
                     // TODO: Fix mapping issues - temporarily disabled
-                    eventBus.emit("engine", "playerQuit", null);
+                    eventBus.emit("engine", "playerLeave", null);
                 } catch (Exception e) {
-                    LOGGER.error("Error during player quit event", e);
+                    LOGGER.error("Error during player leave event", e);
                 }
             }
         });
@@ -771,6 +775,16 @@ public class TapestryMod implements ModInitializer {
     }
     
     /**
+     * Gets ExtensionValidationResult instance statically.
+     * This is for accessing validation results from other components.
+     * 
+     * @return ExtensionValidationResult instance
+     */
+    public static ExtensionValidationResult getStaticValidationResult() {
+        return validationResult;
+    }
+    
+    /**
      * Gets the TapestryAPI instance.
      * This is primarily for testing and internal use.
      * 
@@ -934,7 +948,7 @@ public class TapestryMod implements ModInitializer {
             ServerApiRegistry.closeRegistration();
             
             // Create secure dispatcher
-            rpcDispatcher = new RpcDispatcher();
+            rpcDispatcher = new RpcDispatcher(server);
             
             // Create handshake handler
             var handshakeHandler = new HandshakeHandler(handshakeRegistry, rpcDispatcher, List.of());
@@ -945,20 +959,35 @@ public class TapestryMod implements ModInitializer {
             // Create packet handler
             rpcPacketHandler = new RpcPacketHandler(rpcServerRuntime, handshakeHandler);
             
-            // Register network channel using working packet system
-            ServerPlayNetworking.registerGlobalReceiver(RpcCustomPayload.ID,
-                (payload, context) -> {
-                    if (payload instanceof RpcCustomPayload rpcPayload) {
-                        rpcPacketHandler.handle(context.player(), rpcPayload.json());
-                    }
-                });
+            // Register RPC payload types (Minecraft 1.20.5+ system)
+            PayloadTypeRegistry.playS2C().register(
+                RpcPayload.ID,
+                RpcPayloadCodec.CODEC
+            );
             
-            // Register client-side packet handler for integrated server
-            if (!server.isDedicated()) {
-                // Note: ClientPlayNetworking.registerGlobalReceiver doesn't exist
-                // This would need to be handled differently for integrated servers
-                LOGGER.debug("Integrated server detected - client-side RPC packet handler not implemented");
-            }
+            PayloadTypeRegistry.playC2S().register(
+                RpcPayload.ID,
+                RpcPayloadCodec.CODEC
+            );
+            
+            // Register server receiver (CORRECT 1.21.11 SIGNATURE)
+            ServerPlayNetworking.registerGlobalReceiver(
+                RpcPayload.ID,
+                (payload, context) -> {
+                    ServerPlayerEntity player = context.player();
+                    String json = payload.json();
+                    
+                    // CRITICAL: Hop back to server thread
+                    context.server().execute(() -> {
+                        rpcPacketHandler.handle(player, json);
+                    });
+                }
+            );
+            
+            LOGGER.info("RPC payload system initialized with receiver");
+            
+            // Client-side networking will be handled separately
+            LOGGER.debug("Client-side RPC receiver registration deferred to client initialization");
             
             // Initialize TypeScript RPC API
             com.tapestry.typescript.RpcApi.initializeForServer(rpcApiRegistry);

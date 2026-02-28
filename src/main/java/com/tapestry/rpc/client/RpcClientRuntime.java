@@ -1,17 +1,26 @@
 package com.tapestry.rpc.client;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.network.PacketByteBuf;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import com.tapestry.networking.RpcPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.fabricmc.loader.api.FabricLoader;
 
-import com.tapestry.networking.RpcCustomPayload;
+import com.tapestry.BuildConfig;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Phase 17: Client-side RPC runtime implementing secure facade.
@@ -47,7 +56,38 @@ public class RpcClientRuntime implements RpcClientFacade {
     
     private void handleIncoming(String json) {
         // Parse and handle the incoming packet
-        // TODO: Implement packet routing logic
+        try {
+            // Parse JSON with error handling
+            JsonObject data;
+            try {
+                data = JsonParser.parseString(json).getAsJsonObject();
+            } catch (JsonParseException e) {
+                LOGGER.error("Invalid JSON from server: {}", e.getMessage());
+                return;
+            }
+            
+            // Validate protocol version
+            if (!data.has("protocol") || data.get("protocol").getAsInt() != PROTOCOL_VERSION) {
+                LOGGER.error("Received packet with invalid protocol version: {}", data.get("protocol"));
+                return;
+            }
+            
+            // Route based on packet type
+            String packetType = data.get("type").getAsString();
+            switch (packetType) {
+                case "hello_ack" -> handleHelloAck(data);
+                case "rpc_response" -> handleRpcResponse(data);
+                case "server_event" -> handleServerEvent(data);
+                default -> {
+                    LOGGER.warn("Unknown packet type '{}' from server: {}", packetType);
+                    // Silently ignore unknown packet types as per spec
+                }
+            }
+            
+        } catch (Exception e) {
+            LOGGER.error("Error handling RPC packet from server", e);
+            // Don't crash connection, just log error
+        }
     }
     
     private static RpcClientRuntime instance = null;
@@ -120,33 +160,81 @@ public class RpcClientRuntime implements RpcClientFacade {
             throw new RuntimeException("HANDSHAKE_INCOMPLETE: RPC handshake not complete");
         }
         
-        // For now, just log - proper unsubscription requires ClientEventRegistry changes
-        // TODO: Add unsubscribe method to ClientEventRegistry
-        LOGGER.debug("Unsubscribed from event: {}", eventId);
+        boolean removed = eventRegistry.unsubscribe(eventId);
+        LOGGER.debug("Unsubscribed from event: {} (handlers removed: {})", eventId, removed);
     }
     
     /**
      * Converts Map to JsonElement for existing RPC system.
+     * Handles nested objects, arrays, and various data types.
      */
     private JsonElement convertToJson(Map<String, Object> args) {
-        // TODO: Implement conversion using existing JSON utilities
-        // For now, create simple JsonObject
+        if (args == null) {
+            return null;
+        }
+        
         JsonObject json = new JsonObject();
-        if (args != null) {
-            for (Map.Entry<String, Object> entry : args.entrySet()) {
-                Object value = entry.getValue();
-                if (value instanceof String) {
-                    json.addProperty(entry.getKey(), (String) value);
-                } else if (value instanceof Number) {
-                    json.addProperty(entry.getKey(), (Number) value);
-                } else if (value instanceof Boolean) {
-                    json.addProperty(entry.getKey(), (Boolean) value);
-                } else {
-                    json.addProperty(entry.getKey(), String.valueOf(value));
-                }
+        for (Map.Entry<String, Object> entry : args.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            
+            if (value == null) {
+                json.add(key, null);
+            } else if (value instanceof String) {
+                json.addProperty(key, (String) value);
+            } else if (value instanceof Number) {
+                json.addProperty(key, (Number) value);
+            } else if (value instanceof Boolean) {
+                json.addProperty(key, (Boolean) value);
+            } else if (value instanceof Character) {
+                json.addProperty(key, (Character) value);
+            } else if (value instanceof Map) {
+                @SuppressWarnings("unchecked")
+                JsonElement nestedJson = convertToJson((Map<String, Object>) value);
+                json.add(key, nestedJson);
+            } else if (value instanceof java.util.List) {
+                JsonArray jsonArray = convertToJsonArray((java.util.List<?>) value);
+                json.add(key, jsonArray);
+            } else if (value instanceof java.util.Collection) {
+                JsonArray jsonArray = convertToJsonArray(new java.util.ArrayList<>((java.util.Collection<?>) value));
+                json.add(key, jsonArray);
+            } else {
+                // Fallback to string representation for unknown types
+                json.addProperty(key, String.valueOf(value));
             }
         }
         return json;
+    }
+    
+    /**
+     * Converts a List to JsonArray.
+     */
+    private JsonArray convertToJsonArray(java.util.List<?> list) {
+        JsonArray jsonArray = new JsonArray();
+        for (Object item : list) {
+            if (item == null) {
+                jsonArray.add((JsonElement) null);
+            } else if (item instanceof String) {
+                jsonArray.add((String) item);
+            } else if (item instanceof Number) {
+                jsonArray.add((Number) item);
+            } else if (item instanceof Boolean) {
+                jsonArray.add((Boolean) item);
+            } else if (item instanceof Character) {
+                jsonArray.add((Character) item);
+            } else if (item instanceof Map) {
+                @SuppressWarnings("unchecked")
+                JsonElement nestedJson = convertToJson((Map<String, Object>) item);
+                jsonArray.add(nestedJson);
+            } else if (item instanceof java.util.List) {
+                JsonArray nestedArray = convertToJsonArray((java.util.List<?>) item);
+                jsonArray.add(nestedArray);
+            } else {
+                // Fallback to string representation
+                jsonArray.add(String.valueOf(item));
+            }
+        }
+        return jsonArray;
     }
     
     /**
@@ -292,8 +380,16 @@ public class RpcClientRuntime implements RpcClientFacade {
      */
     private void sendPacket(JsonObject packet) {
         try {
-            // TODO: Fix mapping issues - temporarily disabled
-        return;
+            ClientPlayNetworkHandler networkHandler = MinecraftClient.getInstance().getNetworkHandler();
+            if (networkHandler == null) {
+                LOGGER.warn("Cannot send RPC packet - no network connection");
+                return;
+            }
+            
+            String packetData = packet.toString();
+            
+            // Send using modern payload system
+            ClientPlayNetworking.send(new RpcPayload(packetData));
                 
         } catch (Exception e) {
             LOGGER.error("Failed to send RPC packet to server", e);
@@ -309,19 +405,29 @@ public class RpcClientRuntime implements RpcClientFacade {
         packet.addProperty("type", "hello");
         
         JsonObject client = new JsonObject();
-        client.addProperty("tapestryVersion", "0.16.0"); // TODO: Get from build config
+        client.addProperty("tapestryVersion", BuildConfig.getVersion());
         
         // Add client mods
-        com.google.gson.JsonArray mods = new com.google.gson.JsonArray();
-        // TODO: Get actual mod list
-        mods.add(new com.google.gson.JsonObject());
+        JsonArray mods = new JsonArray();
+        try {
+            FabricLoader.getInstance().getAllMods().forEach(modContainer -> {
+                JsonObject modInfo = new JsonObject();
+                modInfo.addProperty("id", modContainer.getMetadata().getId());
+                modInfo.addProperty("version", modContainer.getMetadata().getVersion().getFriendlyString());
+                modInfo.addProperty("name", modContainer.getMetadata().getName());
+                mods.add(modInfo);
+            });
+            LOGGER.debug("Added {} client mods to handshake", mods.size());
+        } catch (Exception e) {
+            LOGGER.warn("Failed to get client mod list, continuing with empty list", e);
+        }
         
         client.add("mods", mods);
         packet.add("client", client);
         
         sendPacket(packet);
         
-        LOGGER.debug("RPC handshake initiated");
+        LOGGER.debug("RPC handshake initiated with version {}", BuildConfig.getVersion());
     }
     
     /**

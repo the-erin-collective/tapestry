@@ -1,11 +1,8 @@
 package com.tapestry.rpc;
 
 import com.google.gson.JsonObject;
-import com.tapestry.networking.RpcCustomPayload;
-
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import com.tapestry.networking.RpcPayload;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +14,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
- * Handles the RPC handshake process between client and server.
+ * Handles RPC handshake process between client and server.
  */
 public class HandshakeHandler {
     
@@ -151,9 +148,8 @@ public class HandshakeHandler {
         try {
             String packetData = packet.toString();
             
-            // Send using the custom payload record
-            RpcCustomPayload customPayload = new RpcCustomPayload(packetData);
-            player.networkHandler.sendPacket(new CustomPayloadS2CPacket(customPayload));
+            // Send using modern payload system
+            ServerPlayNetworking.send(player, new RpcPayload(packetData));
                 
         } catch (Exception e) {
             LOGGER.error("Failed to send handshake packet to player: {}", player.getName().getString(), e);

@@ -45,8 +45,8 @@ public class ApiRegistry {
     }
     
     /**
-     * Freezes the registry and creates an immutable RpcDispatcher.
-     * After this call, no further registration is allowed.
+     * Freezes the registry - no more methods can be registered.
+     * Note: RpcDispatcher is created separately in initializeRpcSystem.
      */
     public RpcDispatcher freeze() {
         if (frozen) {
@@ -57,8 +57,8 @@ public class ApiRegistry {
         
         LOGGER.info("Freezing ApiRegistry with {} methods", mutableTable.size());
         
-        // Create immutable dispatcher
-        return new RpcDispatcher();
+        // RpcDispatcher is created separately with server context
+        return null; // Dispatcher created in initializeRpcSystem
     }
     
     /**
