@@ -955,8 +955,14 @@ public class TypeScriptRuntime {
             
             // Call TWILA's global registration function when APIs are available
             try {
-                jsContext.eval("js", "if (typeof twilaRegisterEvents === 'function') { twilaRegisterEvents(); }");
-                LOGGER.info("Called TWILA's global registration function");
+                // Set execution context for overlay registration
+                setExecutionContext("twila", ExecutionContextMode.ON_LOAD, "twila-global-callback");
+                try {
+                    jsContext.eval("js", "if (typeof twilaRegisterEvents === 'function') { twilaRegisterEvents(); }");
+                    LOGGER.info("Called TWILA's global registration function");
+                } finally {
+                    clearExecutionContext();
+                }
             } catch (Exception e) {
                 LOGGER.debug("TWILA global function not available or failed: " + e.getMessage());
             }
