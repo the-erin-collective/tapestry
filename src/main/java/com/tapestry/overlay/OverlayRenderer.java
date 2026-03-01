@@ -1,6 +1,7 @@
 package com.tapestry.overlay;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.tapestry.scheduler.SchedulerService;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -22,21 +23,24 @@ public class OverlayRenderer implements HudRenderCallback {
     
     private final OverlayRegistry registry;
     private final OverlaySanitizer sanitizer;
+    private final SchedulerService schedulerService;
     
-    private OverlayRenderer(OverlayRegistry registry) {
+    private OverlayRenderer(OverlayRegistry registry, SchedulerService schedulerService) {
         this.registry = registry;
         this.sanitizer = new OverlaySanitizer();
+        this.schedulerService = schedulerService;
     }
     
     /**
      * Gets the singleton instance.
      * 
      * @param registry the overlay registry
+     * @param schedulerService the scheduler service for client-side ticking
      * @return the overlay renderer instance
      */
-    public static synchronized OverlayRenderer getInstance(OverlayRegistry registry) {
+    public static synchronized OverlayRenderer getInstance(OverlayRegistry registry, SchedulerService schedulerService) {
         if (instance == null) {
-            instance = new OverlayRenderer(registry);
+            instance = new OverlayRenderer(registry, schedulerService);
             // Register with Fabric
             HudRenderCallback.EVENT.register(instance);
             LOGGER.info("Registered overlay renderer with Fabric HudRenderCallback");
@@ -59,8 +63,31 @@ public class OverlayRenderer implements HudRenderCallback {
             return;
         }
         
-        // TODO: Fix mapping issues - temporarily disabled
-        return;
+        // Tick the scheduler on the client thread
+        if (schedulerService != null && client.world != null) {
+            try {
+                // Use client tick count for scheduler
+                long clientTick = client.world.getTime();
+                LOGGER.debug("Ticking scheduler on client thread with tick: {}", clientTick);
+                schedulerService.tick(clientTick);
+            } catch (Exception e) {
+                LOGGER.error("Error during client-side scheduler tick", e);
+            }
+        }
+        
+        // Render all visible overlays
+        for (OverlayRegistry.OverlayEntry entry : registry.getOverlaysInRenderOrder()) {
+            if (entry.definition().isVisible()) {
+                OverlayContext context = new OverlayContext(
+                    drawContext.getScaledWindowWidth(),
+                    drawContext.getScaledWindowHeight(),
+                    0.0f, // Simple tick delta
+                    null // Simple client info for now
+                );
+                
+                renderOverlay(drawContext, entry, context);
+            }
+        }
     }
     
     /**

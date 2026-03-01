@@ -46,6 +46,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * TypeScript runtime using GraalVM Polyglot for JavaScript execution.
@@ -66,8 +69,15 @@ public class TypeScriptRuntime {
     private ExtensionLifecycleManager lifecycleManager;
     private List<ModDescriptor> storedActivationOrder;
     
+    // Runtime services for client-side access
+    private static SchedulerService schedulerService;
+    
     private static Context jsContext;
     private static boolean initialized = false;
+    
+    // Thread-safe task queue for cross-thread JavaScript execution
+    private static final BlockingQueue<Runnable> taskQueue = new LinkedBlockingQueue<>();
+    private static final AtomicBoolean queueProcessorActive = new AtomicBoolean(false);
     
     /**
      * Thread-safe execution context tracking for TypeScript runtime.
@@ -150,6 +160,66 @@ public class TypeScriptRuntime {
      */
     public static String getCurrentModId() {
         return getCurrentContext().modId();
+    }
+    
+    /**
+     * Queues a JavaScript task for thread-safe execution.
+     * This method ensures all JavaScript execution happens on the correct thread.
+     * 
+     * @param task the task to execute
+     */
+    public static void queueTask(Runnable task) {
+        taskQueue.offer(task);
+        startQueueProcessor();
+    }
+    
+    /**
+     * Executes a JavaScript task immediately if on correct thread, otherwise queues it.
+     * 
+     * @param task the task to execute
+     */
+    public static void executeTaskSafely(Runnable task) {
+        // Check if we're on the main/render thread
+        if (isMainThread()) {
+            task.run();
+        } else {
+            queueTask(task);
+        }
+    }
+    
+    /**
+     * Starts the queue processor if not already running.
+     */
+    private static void startQueueProcessor() {
+        if (queueProcessorActive.compareAndSet(false, true)) {
+            new Thread(TypeScriptRuntime::processQueue, "TypeScript-Queue-Processor").start();
+        }
+    }
+    
+    /**
+     * Processes queued tasks on the correct thread.
+     */
+    private static void processQueue() {
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                Runnable task = taskQueue.take();
+                if (task != null) {
+                    task.run();
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            queueProcessorActive.set(false);
+        }
+    }
+    
+    /**
+     * Checks if current thread is the main/render thread.
+     */
+    private static boolean isMainThread() {
+        String threadName = Thread.currentThread().getName();
+        return threadName.equals("Render thread") || threadName.equals("Client thread");
     }
     
     /**
@@ -544,6 +614,9 @@ public class TypeScriptRuntime {
         }
         
         try {
+            // Store scheduler service for client-side access
+            TypeScriptRuntime.schedulerService = schedulerService;
+            
             // Extend the tapestry object with Phase 6 APIs
             extendTapestryObjectForRuntime(schedulerService, eventBus, configService, stateService, modRegistry);
             
@@ -968,7 +1041,7 @@ public class TypeScriptRuntime {
             }
             
             // Initialize overlay renderer
-            com.tapestry.overlay.OverlayRenderer.getInstance(overlayRegistry);
+            com.tapestry.overlay.OverlayRenderer.getInstance(overlayRegistry, schedulerService);
             
             // Run CLIENT_PRESENTATION_READY phase sanity check
             runSanityCheckForPhase(TapestryPhase.CLIENT_PRESENTATION_READY);

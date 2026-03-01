@@ -115,7 +115,7 @@ public class ClientInfo {
          */
         public static PlayerInfo fromPlayer(ClientPlayerEntity player) {
             // TODO: Fix mapping issues - temporarily disabled
-        return null;
+            return null;
         }
     }
     

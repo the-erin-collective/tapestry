@@ -2,6 +2,7 @@ package com.tapestry.scheduler;
 
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
+import com.tapestry.typescript.TypeScriptRuntime;
 import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,7 +126,9 @@ public class SchedulerService {
      * @return opaque task handle
      */
     public String nextTick(Value callback, String modId) {
-        return setTimeout(callback, 1, modId);
+        String handle = setTimeout(callback, 1, modId);
+        LOGGER.debug("Scheduled nextTick task {} for mod {} to run at tick {}", handle, modId, currentTick + 1);
+        return handle;
     }
     
     /**
@@ -138,8 +141,11 @@ public class SchedulerService {
         
         List<ScheduledTask> dueTasks = tickWheel.remove(tick);
         if (dueTasks == null || dueTasks.isEmpty()) {
+            LOGGER.debug("No tasks due for tick {}", tick);
             return;
         }
+        
+        LOGGER.debug("Found {} tasks due for tick {}", dueTasks.size(), tick);
         
         // Sort for deterministic execution: modId ascending, then registration order
         dueTasks.sort(Comparator
@@ -148,10 +154,12 @@ public class SchedulerService {
         
         for (ScheduledTask task : dueTasks) {
             if (task.isCancelled()) {
+                LOGGER.debug("Skipping cancelled task {} from mod {}", task.handle(), task.modId());
                 continue;
             }
             
             try {
+                LOGGER.debug("Executing task {} from mod {} at tick {}", task.handle(), task.modId(), tick);
                 executeTask(task);
                 
                 // Reschedule interval tasks
@@ -159,6 +167,7 @@ public class SchedulerService {
                     long nextTick = currentTick + task.getInterval();
                     task.setTargetTick(nextTick);
                     tickWheel.computeIfAbsent(nextTick, k -> new ArrayList<>()).add(task);
+                    LOGGER.debug("Rescheduled interval task {} for mod {} to tick {}", task.handle(), task.modId(), nextTick);
                 }
                 
             } catch (Exception e) {
@@ -173,23 +182,36 @@ public class SchedulerService {
     }
     
     /**
-     * Executes a scheduled task with proper context.
+     * Executes a scheduled task with proper context in a thread-safe manner.
      */
     private void executeTask(ScheduledTask task) {
-        // Create immutable context object
-        Map<String, Object> context = new HashMap<>();
-        context.put("modId", task.modId());
-        context.put("tick", currentTick);
-        context.put("handle", task.handle());
-        // Add worldId if available (for Phase 7+ compatibility)
-        // For now, we'll set it to null but the structure is ready
-        context.put("worldId", null);
-        
-        // Execute the callback
-        task.callback().executeVoid(context);
-        
-        LOGGER.debug("Executed scheduled task {} for mod {} at tick {}", 
-            task.handle(), task.modId(), currentTick);
+        // Queue the task for thread-safe execution
+        TypeScriptRuntime.executeTaskSafely(() -> {
+            // Set execution context for this mod's task
+            TypeScriptRuntime.setExecutionContext(task.modId(), 
+                TypeScriptRuntime.ExecutionContextMode.RUNTIME, 
+                "scheduler:" + task.handle());
+            
+            // Create immutable context object
+            Map<String, Object> context = new HashMap<>();
+            context.put("modId", task.modId());
+            context.put("tick", currentTick);
+            context.put("handle", task.handle());
+            // Add worldId if available (for Phase 7+ compatibility)
+            // For now, we'll set it to null but structure is ready
+            context.put("worldId", null);
+            
+            try {
+                // Execute the callback
+                task.callback().executeVoid(context);
+                
+                LOGGER.debug("Executed scheduled task {} for mod {} at tick {}", 
+                    task.handle(), task.modId(), currentTick);
+            } finally {
+                // Clear execution context after task completes
+                TypeScriptRuntime.clearExecutionContext();
+            }
+        });
     }
     
     /**
