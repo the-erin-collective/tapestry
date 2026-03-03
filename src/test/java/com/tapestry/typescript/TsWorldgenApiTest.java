@@ -99,7 +99,13 @@ public class TsWorldgenApiTest {
             return;
         }
         
-        // Move to a different phase
+        // Reset phase controller and advance to TS_REGISTER (not TS_READY)
+        PhaseController.reset();
+        PhaseController.getInstance().advanceTo(TapestryPhase.DISCOVERY);
+        PhaseController.getInstance().advanceTo(TapestryPhase.VALIDATION);
+        PhaseController.getInstance().advanceTo(TapestryPhase.REGISTRATION);
+        PhaseController.getInstance().advanceTo(TapestryPhase.FREEZE);
+        PhaseController.getInstance().advanceTo(TapestryPhase.TS_LOAD);
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
         
         Value handler = graalContext.eval("js", "(blockPos, world) => {}");

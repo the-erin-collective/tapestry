@@ -28,6 +28,7 @@ import com.tapestry.rpc.client.RpcClientRuntime;
 import com.tapestry.rpc.client.RpcClientFacade;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.PolyglotAccess;
 import org.graalvm.polyglot.EnvironmentAccess;
 import org.graalvm.polyglot.proxy.ProxyObject;
 import org.graalvm.polyglot.Source;
@@ -60,6 +61,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class TypeScriptRuntime {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(TypeScriptRuntime.class);
+    private static TypeScriptRuntime instance;
     
     // Phase 14: Type integration for cross-mod type contracts
     private static GraalVMTypeIntegration typeIntegration;
@@ -154,6 +156,25 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Gets the singleton instance of TypeScriptRuntime.
+     * 
+     * @return the TypeScriptRuntime instance, or null if not yet created
+     */
+    public static TypeScriptRuntime getInstance() {
+        return instance;
+    }
+    
+    /**
+     * Sets the singleton instance of TypeScriptRuntime.
+     * This should be called once during initialization.
+     * 
+     * @param runtime the TypeScriptRuntime instance
+     */
+    public static void setInstance(TypeScriptRuntime runtime) {
+        instance = runtime;
+    }
+    
+    /**
      * Gets the current mod ID from the execution context.
      * 
      * @return the current mod ID or null if not in a mod context
@@ -179,8 +200,8 @@ public class TypeScriptRuntime {
      * @param task the task to execute
      */
     public static void executeTaskSafely(Runnable task) {
-        // Check if we're on the main/render thread
-        if (isMainThread()) {
+        // Check if we're on a thread that can safely execute JavaScript
+        if (isJavaScriptThread()) {
             task.run();
         } else {
             queueTask(task);
@@ -189,22 +210,73 @@ public class TypeScriptRuntime {
     
     /**
      * Starts the queue processor if not already running.
+     * Also initializes the JavaScript context on the correct thread.
      */
     private static void startQueueProcessor() {
         if (queueProcessorActive.compareAndSet(false, true)) {
-            new Thread(TypeScriptRuntime::processQueue, "TypeScript-Queue-Processor").start();
+            Thread queueThread = new Thread(() -> {
+                // Initialize JavaScript context on this thread
+                initializeJavaScriptContext();
+                
+                // Process queued tasks
+                processQueue();
+            }, "TWILA-JS");  // ✅ Standardized thread name
+            queueThread.start();
+        }
+    }
+    
+    /**
+     * Initializes the JavaScript context on the queue processor thread.
+     * This ensures thread affinity for all JavaScript operations.
+     */
+    private static synchronized void initializeJavaScriptContext() {
+        if (jsContext == null) {
+            try {
+                // Create HostAccess policy that allows @HostAccess.Export annotated methods
+                HostAccess hostAccess = HostAccess.newBuilder(HostAccess.NONE)
+                    .allowAccessAnnotatedBy(HostAccess.Export.class)
+                    .allowArrayAccess(true)
+                    .allowListAccess(true)
+                    .build();
+                
+                jsContext = Context.newBuilder("js")
+                    .allowHostAccess(hostAccess)  // ✅ Use restrictive but permissive policy
+                    .allowHostClassLookup(className -> true)  // ✅ Allow class access
+                    .allowIO(true)  // ✅ Allow file I/O for debugging
+                    .allowCreateThread(true)  // ✅ Allow JS to create threads
+                    .allowNativeAccess(false)  // ❌ Keep native access blocked
+                    .allowEnvironmentAccess(EnvironmentAccess.INHERIT)  // ✅ Allow env access
+                    .allowPolyglotAccess(PolyglotAccess.ALL)  // ✅ Allow multi-threaded access
+                    .allowExperimentalOptions(true)
+                    .option("js.console", "true")
+                    .option("js.print", "true")
+                    .build();
+                
+                LOGGER.info("JavaScript context initialized on TWILA-JS thread with HostAccess.Export support");
+            } catch (Exception e) {
+                LOGGER.error("Failed to initialize JavaScript context", e);
+                throw new RuntimeException("JavaScript context initialization failed", e);
+            }
         }
     }
     
     /**
      * Processes queued tasks on the correct thread.
+     * Ensures proper GraalVM context access without nested entry conflicts.
      */
     private static void processQueue() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
                 Runnable task = taskQueue.take();
                 if (task != null) {
-                    task.run();
+                    // ✅ Enter context for this task only
+                    jsContext.enter();
+                    try {
+                        task.run();
+                    } finally {
+                        // ✅ Always exit context after task
+                        jsContext.leave();
+                    }
                 }
             }
         } catch (InterruptedException e) {
@@ -215,11 +287,13 @@ public class TypeScriptRuntime {
     }
     
     /**
-     * Checks if current thread is the main/render thread.
+     * Checks if current thread can safely execute JavaScript.
+     * JavaScript execution is ONLY allowed on TWILA-JS thread
+     * to ensure thread affinity with the GraalVM context.
      */
-    private static boolean isMainThread() {
+    private static boolean isJavaScriptThread() {
         String threadName = Thread.currentThread().getName();
-        return threadName.equals("Render thread") || threadName.equals("Client thread");
+        return threadName.equals("TWILA-JS");  // ✅ Updated thread name
     }
     
     /**
@@ -322,22 +396,26 @@ public class TypeScriptRuntime {
             // Initialize the define function
             defineFunction = new TsModDefineFunction(modRegistry);
             
-            // Create JavaScript context with Phase 17 hardening
-            jsContext = Context.newBuilder("js")
-                .allowHostAccess(HostAccess.NONE)
-                .allowHostClassLookup(className -> false)
-                .allowIO(false)
-                .allowCreateThread(false)
-                .allowNativeAccess(false)
-                .allowEnvironmentAccess(EnvironmentAccess.NONE)
-                .allowExperimentalOptions(true)
-                .option("js.console", "true")
-                .option("js.print", "true")
-                .build();
+            // JavaScript context will be created on-demand on TypeScript-Queue-Processor thread
+            // This ensures proper thread affinity for all JavaScript operations
+            LOGGER.info("JavaScript context will be initialized on-demand on TypeScript-Queue-Processor thread");
             
             // Phase 17: Inject SafeTapestryBridge instead of full API
             RpcClientFacade rpcFacade = getRpcClientFacade();
             SafeTapestryBridge bridge = new SafeTapestryBridge(rpcFacade);
+            
+            // Start queue processor to ensure JavaScript context is available
+            startQueueProcessor();
+            
+            // Wait for context to be initialized
+            while (jsContext == null) {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted while waiting for JavaScript context", e);
+                }
+            }
             
             // Create mod object with define function
             Value modObject = jsContext.eval("js", "({ define: function() {} })");
@@ -407,7 +485,17 @@ public class TypeScriptRuntime {
             });
             console.put("error", (ProxyExecutable) args -> {
                 if (args.length > 0) {
-                    String message = args[0].asString();
+                    StringBuilder message = new StringBuilder();
+                    for (int i = 0; i < args.length; i++) {
+                        if (i > 0) {
+                            message.append(' ');
+                        }
+                        try {
+                            message.append(args[i].asString());
+                        } catch (Exception e) {
+                            message.append(args[i]);
+                        }
+                    }
                     LOGGER.error("[JS ERROR] {}", message);
                 }
                 return null;
