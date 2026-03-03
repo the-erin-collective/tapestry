@@ -20,6 +20,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Client-side player API for TypeScript mods.
@@ -54,17 +56,6 @@ public class ClientPlayersApi {
     private ProxyExecutable createRaycastBlockFunction() {
         return args -> {
             try {
-                // Get the Minecraft client instance
-                MinecraftClient client = MinecraftClient.getInstance();
-                ClientPlayerEntity player = client.player;
-                ClientWorld world = client.world;
-                
-                if (player == null || world == null) {
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("hit", false);
-                    return ProxyObject.fromMap(result);
-                }
-                
                 // Parse options from arguments
                 double maxDistance = 5.0;
                 boolean includeFluids = false;
@@ -83,49 +74,7 @@ public class ClientPlayersApi {
                 if (maxDistance <= 0 || maxDistance > 32.0) {
                     throw new IllegalArgumentException("maxDistance must be between 0 and 32");
                 }
-                
-                // Perform raycast
-                Vec3d start = player.getCameraPosVec(1.0F);
-                Vec3d direction = player.getRotationVec(1.0F);
-                Vec3d end = start.add(direction.multiply(maxDistance));
-                
-                RaycastContext context = new RaycastContext(
-                    start,
-                    end,
-                    RaycastContext.ShapeType.OUTLINE,
-                    includeFluids 
-                        ? RaycastContext.FluidHandling.ANY 
-                        : RaycastContext.FluidHandling.NONE,
-                    player
-                );
-                
-                HitResult hitResult = world.raycast(context);
-                
-                Map<String, Object> result = new HashMap<>();
-                
-                if (hitResult.getType() == HitResult.Type.BLOCK) {
-                    BlockHitResult blockHit = (BlockHitResult) hitResult;
-                    BlockPos pos = blockHit.getBlockPos();
-                    BlockState state = world.getBlockState(pos);
-                    Identifier blockId = Registries.BLOCK.getId(state.getBlock());
-                    
-                    result.put("hit", true);
-                    
-                    Map<String, Object> blockPos = new HashMap<>();
-                    blockPos.put("x", pos.getX());
-                    blockPos.put("y", pos.getY());
-                    blockPos.put("z", pos.getZ());
-                    result.put("blockPos", ProxyObject.fromMap(blockPos));
-                    
-                    result.put("blockId", blockId.toString());
-                    result.put("blockName", state.getBlock().getName().getString());
-                    
-                    Direction side = blockHit.getSide();
-                    result.put("side", side.asString());
-                } else {
-                    result.put("hit", false);
-                }
-                
+                Map<String, Object> result = executeRaycastOnClientThread(maxDistance, includeFluids);
                 return ProxyObject.fromMap(result);
                 
             } catch (Exception e) {
@@ -136,6 +85,82 @@ public class ClientPlayersApi {
                 return ProxyObject.fromMap(errorResult);
             }
         };
+    }
+
+    /**
+     * Runs raycast on Minecraft's client thread and returns plain Java data.
+     * This avoids stale/off-thread camera reads when called from TWILA-JS thread.
+     */
+    private Map<String, Object> executeRaycastOnClientThread(double maxDistance, boolean includeFluids) throws Exception {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.isOnThread()) {
+            return performRaycast(client, maxDistance, includeFluids);
+        }
+
+        CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
+        client.execute(() -> {
+            try {
+                future.complete(performRaycast(client, maxDistance, includeFluids));
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future.get(250, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Performs actual raycast using current client-thread player/camera state.
+     */
+    private Map<String, Object> performRaycast(MinecraftClient client, double maxDistance, boolean includeFluids) {
+        ClientPlayerEntity player = client.player;
+        ClientWorld world = client.world;
+
+        Map<String, Object> result = new HashMap<>();
+        if (player == null || world == null) {
+            result.put("hit", false);
+            return result;
+        }
+
+        Vec3d start = player.getCameraPosVec(1.0F);
+        Vec3d direction = player.getRotationVec(1.0F);
+        Vec3d end = start.add(direction.multiply(maxDistance));
+
+        RaycastContext context = new RaycastContext(
+            start,
+            end,
+            RaycastContext.ShapeType.OUTLINE,
+            includeFluids
+                ? RaycastContext.FluidHandling.ANY
+                : RaycastContext.FluidHandling.NONE,
+            player
+        );
+
+        HitResult hitResult = world.raycast(context);
+        if (hitResult.getType() == HitResult.Type.BLOCK) {
+            BlockHitResult blockHit = (BlockHitResult) hitResult;
+            BlockPos pos = blockHit.getBlockPos();
+            BlockState state = world.getBlockState(pos);
+            Identifier blockId = Registries.BLOCK.getId(state.getBlock());
+
+            result.put("hit", true);
+
+            Map<String, Object> blockPos = new HashMap<>();
+            blockPos.put("x", pos.getX());
+            blockPos.put("y", pos.getY());
+            blockPos.put("z", pos.getZ());
+            result.put("blockPos", blockPos);
+
+            result.put("blockId", blockId.toString());
+            result.put("blockName", state.getBlock().getName().getString());
+
+            Direction side = blockHit.getSide();
+            result.put("side", side.asString());
+        } else {
+            result.put("hit", false);
+        }
+
+        return result;
     }
     
     /**

@@ -238,11 +238,22 @@ public class OverlayRenderer implements HudRenderCallback {
 
             case "text":
                 if (node.content != null) {
-                    // Render text
-                    drawText(drawContext, node.content, x, y, node.color);
+                    // For center-based anchors, center text width around anchor X.
+                    int drawX = x;
+                    MinecraftClient client = MinecraftClient.getInstance();
+                    if (isCenterHorizontalAnchor(anchor) && client.textRenderer != null) {
+                        drawX = x - (client.textRenderer.getWidth(node.content) / 2);
+                    }
+                    drawText(drawContext, node.content, drawX, y, node.color);
                 }
                 break;
         }
+    }
+
+    private boolean isCenterHorizontalAnchor(String anchor) {
+        return "TOP_CENTER".equals(anchor)
+            || "CENTER".equals(anchor)
+            || "BOTTOM_CENTER".equals(anchor);
     }
 
     /**
