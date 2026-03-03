@@ -27,7 +27,6 @@ public class OverlayRenderer implements HudRenderCallback {
 
     private final OverlayRegistry registry;
     private final OverlaySanitizer sanitizer;
-    private final SchedulerService schedulerService;
     private final Map<String, OverlaySanitizer.UINode> latestSanitizedNodes;
     private final Map<String, AtomicBoolean> overlayEvaluationInFlight;
     private final Map<String, Long> lastSnapshotLogAtMs;
@@ -38,7 +37,6 @@ public class OverlayRenderer implements HudRenderCallback {
     private OverlayRenderer(OverlayRegistry registry, SchedulerService schedulerService) {
         this.registry = registry;
         this.sanitizer = new OverlaySanitizer();
-        this.schedulerService = schedulerService;
         this.latestSanitizedNodes = new ConcurrentHashMap<>();
         this.overlayEvaluationInFlight = new ConcurrentHashMap<>();
         this.lastSnapshotLogAtMs = new ConcurrentHashMap<>();
@@ -77,18 +75,6 @@ public class OverlayRenderer implements HudRenderCallback {
         // Skip rendering if client is not ready
         if (client.getWindow() == null) {
             return;
-        }
-
-        // Tick the scheduler on the client thread
-        if (schedulerService != null && client.world != null) {
-            try {
-                // Use client tick count for scheduler
-                long clientTick = client.world.getTime();
-                LOGGER.debug("Ticking scheduler on client thread with tick: {}", clientTick);
-                schedulerService.tick(clientTick);
-            } catch (Exception e) {
-                LOGGER.error("Error during client-side scheduler tick", e);
-            }
         }
 
         // Queue JS overlay evaluation on TWILA-JS and render latest sanitized snapshot.

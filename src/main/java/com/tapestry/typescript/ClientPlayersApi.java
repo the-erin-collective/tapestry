@@ -123,6 +123,7 @@ public class ClientPlayersApi {
         }
 
         Vec3d start = player.getCameraPosVec(1.0F);
+
         Vec3d direction = player.getRotationVec(1.0F);
         Vec3d end = start.add(direction.multiply(maxDistance));
 
@@ -136,9 +137,8 @@ public class ClientPlayersApi {
             player
         );
 
-        HitResult hitResult = world.raycast(context);
-        if (hitResult.getType() == HitResult.Type.BLOCK) {
-            BlockHitResult blockHit = (BlockHitResult) hitResult;
+        BlockHitResult blockHit = world.raycast(context);
+        if (blockHit.getType() == HitResult.Type.BLOCK) {
             BlockPos pos = blockHit.getBlockPos();
             BlockState state = world.getBlockState(pos);
             Identifier blockId = Registries.BLOCK.getId(state.getBlock());

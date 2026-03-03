@@ -38,7 +38,7 @@ public class SchedulerService {
      * @param modId mod ID scheduling the task
      * @return opaque task handle
      */
-    public String setTimeout(Value callback, long delay, String modId) {
+    public synchronized String setTimeout(Value callback, long delay, String modId) {
         PhaseController.getInstance().requireAtLeast(TapestryPhase.RUNTIME);
         
         if (callback == null || !callback.canExecute()) {
@@ -73,7 +73,7 @@ public class SchedulerService {
      * @param modId mod ID scheduling the task
      * @return opaque task handle
      */
-    public String setInterval(Value callback, long interval, String modId) {
+    public synchronized String setInterval(Value callback, long interval, String modId) {
         PhaseController.getInstance().requireAtLeast(TapestryPhase.RUNTIME);
         
         if (callback == null || !callback.canExecute()) {
@@ -108,7 +108,7 @@ public class SchedulerService {
      * @param handle interval task handle
      * @param modId mod ID canceling the task
      */
-    public void clearInterval(String handle, String modId) {
+    public synchronized void clearInterval(String handle, String modId) {
         PhaseController.getInstance().requireAtLeast(TapestryPhase.RUNTIME);
         
         ScheduledTask task = intervalTasks.remove(handle);
@@ -125,7 +125,7 @@ public class SchedulerService {
      * @param modId mod ID scheduling the task
      * @return opaque task handle
      */
-    public String nextTick(Value callback, String modId) {
+    public synchronized String nextTick(Value callback, String modId) {
         String handle = setTimeout(callback, 1, modId);
         LOGGER.debug("Scheduled nextTick task {} for mod {} to run at tick {}", handle, modId, currentTick + 1);
         return handle;
@@ -136,7 +136,7 @@ public class SchedulerService {
      * 
      * @param tick the current server tick
      */
-    public void tick(long tick) {
+    public synchronized void tick(long tick) {
         currentTick = tick;
         
         List<ScheduledTask> dueTasks = tickWheel.remove(tick);
@@ -160,7 +160,7 @@ public class SchedulerService {
             
             try {
                 LOGGER.debug("Executing task {} from mod {} at tick {}", task.handle(), task.modId(), tick);
-                executeTask(task);
+                executeTask(task, tick);
                 
                 // Reschedule interval tasks
                 if (task.isInterval() && !task.isCancelled()) {
@@ -184,7 +184,7 @@ public class SchedulerService {
     /**
      * Executes a scheduled task with proper context in a thread-safe manner.
      */
-    private void executeTask(ScheduledTask task) {
+    private void executeTask(ScheduledTask task, long dispatchTick) {
         // Queue the task for thread-safe execution
         TypeScriptRuntime.executeTaskSafely(() -> {
             // Set execution context for this mod's task
@@ -195,7 +195,7 @@ public class SchedulerService {
             // Create immutable context object
             Map<String, Object> context = new HashMap<>();
             context.put("modId", task.modId());
-            context.put("tick", currentTick);
+            context.put("tick", dispatchTick);
             context.put("handle", task.handle());
             // Add worldId if available (for Phase 7+ compatibility)
             // For now, we'll set it to null but structure is ready
@@ -206,7 +206,7 @@ public class SchedulerService {
                 task.callback().executeVoid(context);
                 
                 LOGGER.debug("Executed scheduled task {} for mod {} at tick {}", 
-                    task.handle(), task.modId(), currentTick);
+                    task.handle(), task.modId(), dispatchTick);
             } finally {
                 // Clear execution context after task completes
                 TypeScriptRuntime.clearExecutionContext();
@@ -217,21 +217,21 @@ public class SchedulerService {
     /**
      * Gets the current tick.
      */
-    public long getCurrentTick() {
+    public synchronized long getCurrentTick() {
         return currentTick;
     }
     
     /**
      * Gets the number of pending tasks.
      */
-    public int getPendingTaskCount() {
+    public synchronized int getPendingTaskCount() {
         return tickWheel.values().stream().mapToInt(List::size).sum();
     }
     
     /**
      * Clears all scheduled tasks (for testing/shutdown).
      */
-    public void clear() {
+    public synchronized void clear() {
         tickWheel.clear();
         intervalTasks.clear();
         currentTick = 0;
