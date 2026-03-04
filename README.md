@@ -1,416 +1,216 @@
-# Tapestry — Architecture & Lifecycle
+# Tapestry
 
-Tapestry is a **TypeScript-first modding framework** built on top of Fabric.
-It provides a **strict, explicit lifecycle** and **enforced phase model** that makes it impossible to run mod logic at the wrong time.
+Tapestry is a **TypeScript‑first modding framework** built as a wrapper around
+a curated subset of the Fabric API. It uses Fabric entrypoints to hook into
+Minecraft's startup, then imposes a strict, enforced phase machine so that mods
+can only interact with the underlying game at the correct time. A GraalVM
+type‑safe JavaScript runtime powers TypeScript mods, giving authors a familiar
+language surface while the Java core mediates access and enforces safety.
 
-Tapestry is *not* a compatibility layer for existing Fabric mods.
-Any mod that works with Tapestry **must be designed for Tapestry from the beginning**.
+Under the hood:
 
----
+* Fabric provides the vanilla game integration and networking.
+* Tapestry’s Java core offers lifecycle control, registry/extension services,
+  and RPC/overlay/persistence helpers.
+* A small GraalVM context executes mod code on both client and server,
+  communicating with the host via a JSON‑RPC bridge.
 
-## Design Goals
+The result is a predictable environment for building client‑only, server‑only,
+or combined mods in TypeScript, with built‑in protections against cross‑phase
+or cross‑mod violations.
 
-* **Explicit lifecycle** — no implicit “this should be ready by now” assumptions
-* **Hard boundaries** — illegal operations fail immediately
-* **TypeScript as a first-class citizen** — not a scripting afterthought
-* **Additive-only extensibility** — no overrides, no mutation after freeze
-* **Deterministic behavior** — same inputs always produce the same results
-
-Tapestry intentionally limits what TypeScript can do, in exchange for strong guarantees.
-
----
-
-## What Tapestry Is *Not*
-
-To avoid confusion, Tapestry does **not**:
-
-* integrate arbitrary Fabric mods
-* wrap or adapt existing Fabric APIs automatically
-* attempt Bukkit / Paper compatibility
-* allow registry mutation from TypeScript
-* provide unrestricted scripting access
-
-If a mod does not explicitly declare Tapestry entrypoints, **Tapestry ignores it**.
+> 💡 *If the framework ever does not know what phase it is in, it is already
+> broken.*
 
 ---
 
-## High-level Architecture
+## Table of Contents
 
-```
-Fabric (Minecraft lifecycle)
-        ↓
-Tapestry Core (phases, safety, API shape)
-        ↓
-Tapestry-aware Mods (Java extensions + TypeScript logic)
-```
-
-Fabric is treated as an **input source**, not the authority.
-Tapestry owns lifecycle, permissions, and API shape.
+1. [Features](#features)
+2. [Getting Started](#getting-started)
+3. [Building & Running](#building--running)
+4. [Testing](#testing)
+5. [Documentation](#documentation)
+6. [Contributing](#contributing)
+7. [License & Contact](#license--contact)
 
 ---
 
-## Lifecycle Model (Runlevel-style Phases)
+## Features
 
-Tapestry uses an explicit, enforced phase machine inspired by Linux runlevels.
+* **Explicit lifecycle phases** (`BOOTSTRAP`, `DISCOVERY`, …, `RUNTIME`)
+* **Fail‑fast enforcement** on illegal operations
+* **Additive‑only extension model**; API shape freezes before runtime
+* **TypeScript runtime** with a frozen, read-only host API (GraalVM)
+* **Capability declarations** and dependency validation
+* Safety checks for RPC, overlays, persistence, etc., built into the core
 
-### Phase enum
+### Example usage
 
-```java
-BOOTSTRAP
-DISCOVERY
-REGISTRATION
-FREEZE
-TS_LOAD
-TS_READY
-RUNTIME
-```
-
-Only **one phase is active at any time**.
-Phases advance **monotonically** and **never regress**.
-
----
-
-## Phase Semantics
-
-### `BOOTSTRAP`
-
-JVM is running. Tapestry core initializes.
-
-**Allowed**
-
-* initialize internal state
-* set up phase controller
-
-**Forbidden**
-
-* Fabric access
-* mod discovery
-* API mutation
-* TypeScript access
-
----
-
-### `DISCOVERY`
-
-Tapestry-aware extensions are discovered via Fabric entrypoints.
-
-**Allowed**
-
-* scan Fabric entrypoints
-* instantiate extension providers
-* read extension descriptors
-
-**Forbidden**
-
-* API mutation
-* side effects
-* TypeScript access
-
-Discovery must be **pure**.
-
----
-
-### `REGISTRATION`
-
-Extensions are allowed to define API shape.
-
-**Allowed**
-
-* extend core domains (additive only)
-* register mod-owned namespaces
-* declare capabilities
-
-**Forbidden**
-
-* TypeScript access
-* gameplay hooks
-* world access
-* registry mutation
-
-This is the **only phase** where API shape may change.
-
----
-
-### `FREEZE`
-
-API surface is sealed permanently.
-
-**Allowed**
-
-* validation
-* consistency checks
-* object freezing
-
-**Forbidden**
-
-* *everything else*
-
-After this phase, API shape is immutable.
-
----
-
-### `TS_LOAD`
-
-TypeScript runtime is initialized.
-
-**Allowed**
-
-* start JS engine (GraalVM)
-* inject frozen API object
-* load TS modules *without executing mod logic*
-
-**Forbidden**
-
-* running mod logic
-* registering hooks
-
----
-
-### `TS_READY`
-
-TypeScript setup is allowed.
-
-**Allowed**
-
-* `onLoad` execution
-* hook registration
-* read-only access to registries
-
-**Forbidden**
-
-* API mutation
-* registry mutation
-* dimension registration
-
-This is the **safe setup window** for TypeScript mods.
-
----
-
-### `RUNTIME`
-
-Server is live and gameplay begins.
-
-**Allowed**
-
-* worldgen
-* events
-* gameplay logic
-
-**Forbidden**
-
-* API changes
-* extension registration
-* TS reloads
-
----
-
-## Phase Enforcement
-
-All sensitive operations must explicitly check the current phase.
-
-> **Silent failure is considered a bug.**
-
-Phase violations throw `IllegalStateException` with clear diagnostics:
-
-* attempted operation
-* expected phase
-* current phase
-
----
-
-## Fabric Integration
-
-### Entrypoints
-
-Tapestry recognizes **only** the following Fabric entrypoints:
-
-#### Tapestry Core
-
-* Standard Fabric mod with `ModInitializer#onInitialize()`
-
-#### Tapestry Extensions (Java)
-
-```json
-"entrypoints": {
-  "tapestry:extension": [
-    "com.example.MyTapestryExtension"
-  ]
-}
-```
-
-Only mods declaring `tapestry:extension` are considered part of Tapestry.
-
----
-
-### Phase Transitions (Fabric → Tapestry)
-
-| Fabric trigger            | Tapestry phase |
-| ------------------------- | -------------- |
-| Tapestry static init      | `BOOTSTRAP`    |
-| Start of `onInitialize()` | `DISCOVERY`    |
-| After discovery completes | `REGISTRATION` |
-| End of registration       | `FREEZE`       |
-| After freeze              | `TS_LOAD`      |
-| After TS runtime ready    | `TS_READY`     |
-| Server started (later)    | `RUNTIME`      |
-
----
-
-## Extension System
-
-### Extension Provider Interface
-
-```java
-public interface TapestryExtensionProvider {
-  TapestryExtensionDescriptor describe();
-  void register(TapestryExtensionContext ctx);
-}
-```
-
-* `describe()` must be side-effect free
-* `register()` is called **only during REGISTRATION**
-
----
-
-### Extension Descriptor
-
-Descriptors are Java objects returned from `describe()`:
-
-```java
-public record TapestryExtensionDescriptor(
-  String id,
-  List<String> capabilities
-) {}
-```
-
-#### ID rules
-
-* Regex: `[A-Za-z][A-Za-z0-9_]*`
-* Must be globally unique
-* `_` allowed, `-` disallowed
-
----
-
-### Capabilities
-
-A capability is a **named optional API surface**.
-
-* Format: `domain.feature` (e.g. `worlds.fog`)
-* Validated for uniqueness
-* Used for conflict detection and future gating
-* Metadata-only in Phase 1
-
----
-
-## Core API Shape (Phase 1)
-
-Phase 1 defines **structure only**, not behavior.
-
+#### TypeScript
 ```ts
-tapestry = {
-  worlds: {},
-  worldgen: {},
-  events: {},
-  mods: {},
-  core: {
-    phases,
-    capabilities
-  }
-}
-```
-
-* Domains exist even if empty
-* Domains are extensible only during REGISTRATION
-* Domains are immutable after FREEZE
-* No `.ext.` namespace exists
-
----
-
-## TypeScript Runtime Model (Phase 1)
-
-### Engine
-
-* **GraalVM Polyglot JavaScript**
-
-### Rules
-
-* TS runtime loads **only after FREEZE**
-* TS receives a **read-only, frozen API object**
-* No TS mod code executes at load time
-* All mod logic must be routed through explicit lifecycle hooks
-
----
-
-### TS Mod Contract (Conceptual)
-
-```ts
+// in a TS mod file
 tapestry.mod.define({
-  onLoad(api) {},
-  onEnable(api) {}
+  onLoad(api) {
+    tapestry.runtime.log.info("hello from my mod!");
+  }
 });
 ```
 
-* `onLoad` → `TS_READY`
-* `onEnable` → `RUNTIME`
+#### Java extension
+```java
+public class MyExtension implements TapestryExtensionProvider {
+    public TapestryExtensionDescriptor describe() {
+        return new TapestryExtensionDescriptor("myext", List.of("rpc"));
+    }
+    public void register(TapestryExtensionContext ctx) {
+        ctx.registerRpcEndpoint("myapi", (ctx, data) -> {
+            return JsonValue.of("pong");
+        });
+    }
+}
+```
 
-Top-level side effects are discouraged and may be blocked.
-
----
-
-## Error Handling Policy
-
-* Phase violations → **hard fail**
-* Invalid descriptors → **hard fail**
-* Extension conflicts → **hard fail**
-* Partial startup is never allowed
-
-Failing fast is preferred over ambiguous runtime behavior.
-
----
-
-## Testing Strategy (Phase 1)
-
-* Unit-test phase machine (valid + invalid transitions)
-* Unit-test extension discovery & registration
-* Unit-test API freeze enforcement
-* Verify TS runtime loads only after FREEZE
-* Verify no TS logic executes before TS_READY
-
-Minecraft gameplay is **not required** for Phase 1 tests.
+The current codebase implements the core lifecycle, extension system, and
+runtime plumbing; higher‑level gameplay features are built atop this foundation.
 
 ---
 
-## Phase 1 Non-goals
+## System Overview
 
-Phase 1 explicitly does **not** include:
+### Lifecycle Phases
 
-* worldgen hooks
-* block placement
-* dimension logic
-* gameplay events
-* persistence
-* TS mod discovery from disk
+Tapestry divides startup into discrete phases:
 
-These are layered on **after** the lifecycle spine is proven correct.
+* `BOOTSTRAP` – JVM loads, basic core structures init.
+* `DISCOVERY` – scan Fabric entrypoints for Tapestry extensions.
+* `REGISTRATION` – extensions declare new API domains and capabilities.
+* `FREEZE` – API shape is sealed; no further mutation allowed.
+* `TS_LOAD` – start GraalVM, inject frozen API, load scripts (no execution).
+* `TS_READY` – run `onLoad` hooks, register event listeners, read-only ops.
+* `RUNTIME` – world and player logic may run, events fire normally.
+
+Every API call that touches game state checks the current phase and throws if
+illegal. This enforces the mental model that mods can schedule work only in
+allowed windows.
+
+### Client / Server Communication
+
+A lightweight JSON‑RPC transport exists between client and server to enable
+remote procedure calls and event pushes. Mod authors can register
+server‑side RPC handlers and call them from client code (and vice versa) with
+automatic handshake and rate‑limiting. The same TypeScript runtime is used on
+both sides, allowing shared logic or side‑specific modules.
+
+### Mod Types
+
+Mods may target:
+
+* **Client only** – installable on the player’s machine; cannot affect server
+  state.
+* **Server only** – runs on dedicated servers; client code isn’t executed.
+* **Both** – packages with code executed on both sides using conditional
+  guards (`if (tapestry.isClient) ...`).
+
+The framework exposes `tapestry.isClient` / `tapestry.isServer` flags within the
+runtime to help authors write portable code.
 
 ---
 
-## Guiding Principle
 
-> **If the framework does not know what phase it is in, it is already broken.**
-
-Tapestry’s value comes from enforcing *when* things may happen, not just *how*.
 
 ---
 
-## Final Note to Contributors
+## Getting Started
 
-If you find yourself thinking:
+**Prerequisites**
 
-> “This would be easier if we just allowed this earlier…”
+* Java Development Kit 17 or later
+* Gradle (wrapper included)
+* GraalVM (used by tests and runtime); see `gradle.properties` for the version
 
-Stop.
+### Importing
 
-That friction is intentional.
-It exists to prevent entire classes of bugs that only appear weeks later.
+Open the project as a Gradle project in your IDE. The `:` root project contains
+the core and test sources.
+
+### Building
+
+```sh
+# clean build prints lint/test results
+./gradlew clean build
+```
+
+### Running a Development Instance
+
+Use Loom tasks provided by the build:
+
+```sh
+./gradlew runClient
+./gradlew runServer
+```
+
+These launch a Minecraft instance with the current JAR on the classpath. Mods
+live under `run/mods`.
+
+---
+
+## Building & Running
+
+Artifacts are produced under `build/libs` as a shaded JAR. The Gradle build
+handles Minecraft mappings via Loom; you generally do not need to modify the
+buildscript.
+
+Release builds use `./gradlew shadowJar` and publish to the configured
+repository in `build.gradle`.
+
+---
+
+## Testing
+
+Unit tests (JUnit) cover the core lifecycle, phase checks, extension registry,
+and runtime‑side helpers. They do **not** require a Minecraft client.
+
+```sh
+./gradlew test
+```
+
+Integration tests that exercise Fabric or the JS engine can be invoked with
+`./gradlew integrationTest` when they are added.
+
+---
+
+## Documentation
+
+All current architectural and behavioral documentation lives in
+`docs/topics/`. These topic‑oriented Markdown files each describe a domain
+(lifecycle, RPC & networking, client overlays, persistence, etc.) and include
+example snippets showing real‑world usage patterns. Read them before
+modifying core logic.
+
+The topic docs replace the old phase‑plan material; the old spec files have
+been deleted.
+
+---
+
+## Contributing
+
+1. Fork the repository and create a feature branch.
+2. Follow the existing Java/TS code style (`.editorconfig`).
+3. Add or update unit tests for any behavior changes.
+4. Keep topic docs in sync with implementation changes.
+5. Submit a pull request with a clear description and link to any related
+   docs or issue.
+
+We welcome new ideas, but please respect the lifecycle guarantees; they are
+the core value proposition of Tapestry.
+
+---
+
+## License & Contact
+
+This project is licensed under the **GNU Affero General Public License v3.0
+(AGPL‑3.0)**. See the `LICENSE` file for the full text and compliance notes.
+
+Have questions or run into issues? Open an issue on GitHub.
 
