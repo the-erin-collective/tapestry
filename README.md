@@ -38,7 +38,7 @@ or cross‑mod violations.
 
 ## Features
 
-* **Explicit lifecycle phases** (`BOOTSTRAP`, `DISCOVERY`, …, `RUNTIME`)
+* **Explicit lifecycle phases** (`BOOTSTRAP`, `DISCOVERY`, `VALIDATION`, `REGISTRATION`, `FREEZE`, `TS_LOAD`, `TS_REGISTER`, `TS_ACTIVATE`, `TS_READY`, `PERSISTENCE_READY`, `EVENT`, `RUNTIME`, `CLIENT_PRESENTATION_READY`)
 * **Fail‑fast enforcement** on illegal operations
 * **Additive‑only extension model**; API shape freezes before runtime
 * **TypeScript runtime** with a frozen, read-only host API (GraalVM)
@@ -52,7 +52,7 @@ or cross‑mod violations.
 // in a TS mod file
 tapestry.mod.define({
   onLoad(api) {
-    tapestry.runtime.log.info("hello from my mod!");
+    console.log("hello from my mod!");
   }
 });
 ```
@@ -84,11 +84,17 @@ Tapestry divides startup into discrete phases:
 
 * `BOOTSTRAP` – JVM loads, basic core structures init.
 * `DISCOVERY` – scan Fabric entrypoints for Tapestry extensions.
+* `VALIDATION` – Extensions validated, no mutations allowed.
 * `REGISTRATION` – extensions declare new API domains and capabilities.
 * `FREEZE` – API shape is sealed; no further mutation allowed.
 * `TS_LOAD` – start GraalVM, inject frozen API, load scripts (no execution).
+* `TS_REGISTER` – Mod registration, scripts evaluated, metadata collected.
+* `TS_ACTIVATE` – Mod activation, dependency resolution.
 * `TS_READY` – run `onLoad` hooks, register event listeners, read-only ops.
+* `PERSISTENCE_READY` – Persistence layer initialized.
+* `EVENT` – Event system active.
 * `RUNTIME` – world and player logic may run, events fire normally.
+* `CLIENT_PRESENTATION_READY` – Client overlay system initialized (client-side only).
 
 Every API call that touches game state checks the current phase and throws if
 illegal. This enforces the mental model that mods can schedule work only in
