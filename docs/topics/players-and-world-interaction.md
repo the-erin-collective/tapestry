@@ -30,7 +30,7 @@ Current behavior is client-local and phase-gated to client presentation readines
 ```ts
 // server-side in a mod
 tapestry.mod.on("player_join", e => {
-  tapestry.runtime.log.info("player joined: " + e.playerName);
+  console.log("player joined: " + e.playerName);
 });
 ```
 

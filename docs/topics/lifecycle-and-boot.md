@@ -51,12 +51,18 @@ Server lifecycle callbacks then finalize server-dependent services:
 public enum TapestryPhase {
     BOOTSTRAP,
     DISCOVERY,
+    VALIDATION,
     REGISTRATION,
     FREEZE,
     TS_LOAD,
+    TS_REGISTER,
+    TS_ACTIVATE,
     TS_READY,
+    PERSISTENCE_READY,
+    EVENT,
     RUNTIME,
-    FAILED; // helper for error states
+    CLIENT_PRESENTATION_READY,
+    FAILED;
 }
 
 public final class PhaseController {
