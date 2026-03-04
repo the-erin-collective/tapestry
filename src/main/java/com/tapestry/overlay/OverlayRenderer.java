@@ -347,7 +347,7 @@ public class OverlayRenderer implements HudRenderCallback {
 
         // Draw a high-contrast backdrop so text remains visible against world and shaders.
         int bgPadding = 2;
-        int bgColor = 0xA0000000;
+        int bgColor = 0x70000000;
         drawContext.fill(
             x - bgPadding,
             y - bgPadding,

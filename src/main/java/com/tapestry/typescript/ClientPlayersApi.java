@@ -3,12 +3,15 @@ package com.tapestry.typescript;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Direction;
 import net.minecraft.block.BlockState;
+import net.minecraft.fluid.FluidState;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.RaycastContext;
@@ -20,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -122,18 +126,44 @@ public class ClientPlayersApi {
             return result;
         }
 
+        HitResult crosshairTarget = client.crosshairTarget;
+        if (crosshairTarget instanceof EntityHitResult entityHitResult) {
+            double maxDistanceSq = maxDistance * maxDistance;
+            if (player.getCameraPosVec(1.0F).squaredDistanceTo(crosshairTarget.getPos()) <= maxDistanceSq) {
+                Entity entity = entityHitResult.getEntity();
+                Identifier entityId = Registries.ENTITY_TYPE.getId(entity.getType());
+
+                result.put("hit", true);
+                result.put("targetType", "entity");
+                result.put("entityId", entityId.toString());
+                result.put("entityName", entity.getType().getName().getString());
+
+                Map<String, Object> entityPos = new HashMap<>();
+                entityPos.put("x", entity.getX());
+                entityPos.put("y", entity.getY());
+                entityPos.put("z", entity.getZ());
+                result.put("entityPos", entityPos);
+
+                return result;
+            }
+        }
+
         Vec3d start = player.getCameraPosVec(1.0F);
 
         Vec3d direction = player.getRotationVec(1.0F);
         Vec3d end = start.add(direction.multiply(maxDistance));
 
+        // Detect water surface when above water, but ignore fluid faces while in water.
+        boolean inWater = player.isSubmergedInWater() || player.isTouchingWater();
+        RaycastContext.FluidHandling fluidHandling = includeFluids && !inWater
+            ? RaycastContext.FluidHandling.ANY
+            : RaycastContext.FluidHandling.NONE;
+
         RaycastContext context = new RaycastContext(
             start,
             end,
             RaycastContext.ShapeType.OUTLINE,
-            includeFluids
-                ? RaycastContext.FluidHandling.ANY
-                : RaycastContext.FluidHandling.NONE,
+            fluidHandling,
             player
         );
 
@@ -142,6 +172,7 @@ public class ClientPlayersApi {
             BlockPos pos = blockHit.getBlockPos();
             BlockState state = world.getBlockState(pos);
             Identifier blockId = Registries.BLOCK.getId(state.getBlock());
+            FluidState fluidState = world.getFluidState(pos);
 
             result.put("hit", true);
 
@@ -151,8 +182,23 @@ public class ClientPlayersApi {
             blockPos.put("z", pos.getZ());
             result.put("blockPos", blockPos);
 
-            result.put("blockId", blockId.toString());
-            result.put("blockName", state.getBlock().getName().getString());
+            Identifier fluidId = Registries.FLUID.getId(fluidState.getFluid());
+            boolean isFluidTarget = includeFluids
+                && !inWater
+                && fluidState != null
+                && !fluidState.isEmpty()
+                && fluidId != null
+                && !"minecraft:empty".equals(fluidId.toString());
+
+            if (isFluidTarget) {
+                result.put("targetType", "fluid");
+                result.put("blockId", fluidId.toString());
+                result.put("blockName", toDisplayName(fluidId));
+            } else {
+                result.put("targetType", "block");
+                result.put("blockId", blockId.toString());
+                result.put("blockName", state.getBlock().getName().getString());
+            }
 
             Direction side = blockHit.getSide();
             result.put("side", side.asString());
@@ -161,6 +207,27 @@ public class ClientPlayersApi {
         }
 
         return result;
+    }
+
+    private String toDisplayName(Identifier id) {
+        String path = id.getPath().replace('_', ' ');
+        String[] words = path.split("\\s+");
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            String word = words[i];
+            if (word.isEmpty()) {
+                continue;
+            }
+            String normalized = word.toLowerCase(Locale.ROOT);
+            builder.append(Character.toUpperCase(normalized.charAt(0)));
+            if (normalized.length() > 1) {
+                builder.append(normalized.substring(1));
+            }
+            if (i < words.length - 1) {
+                builder.append(' ');
+            }
+        }
+        return builder.toString().trim();
     }
     
     /**
