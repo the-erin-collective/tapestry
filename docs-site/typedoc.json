@@ -1,0 +1,23 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "../src/main/resources/mikel/mikel-0.32.0/index.d.ts"
+  ],
+  "out": "./docs/api",
+  "plugin": [
+    "typedoc-plugin-markdown"
+  ],
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
+  "categorizeByGroup": true,
+  "categoryOrder": [
+    "Core",
+    "Types",
+    "Helpers",
+    "Functions",
+    "Utilities",
+    "*"
+  ],
+  "skipErrorChecking": true
+}

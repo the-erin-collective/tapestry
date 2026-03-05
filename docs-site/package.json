@@ -1,0 +1,37 @@
+{
+  "name": "tapestry-docs",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Documentation site for Tapestry - TypeScript-first Minecraft modding framework",
+  "scripts": {
+    "docs:dev": "npm run gen-api && vitepress dev docs",
+    "docs:build": "npm run gen-api && npm run fix-api-syntax && vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "gen-api": "npm run validate-typedoc && typedoc",
+    "validate-typedoc": "node scripts/validate-typedoc.mjs",
+    "fix-api-syntax": "node scripts/fix-api-vue-syntax.mjs",
+    "gen-favicons": "node scripts/generate-favicons.mjs && node scripts/generate-ico.mjs",
+    "test:search": "node scripts/test-search.mjs",
+    "test:responsive": "node scripts/test-responsive.mjs",
+    "validate:links": "node scripts/validate-links.mjs",
+    "verify:contrast": "node scripts/verify-color-contrast.mjs",
+    "verify:deployment": "node scripts/verify-deployment.mjs"
+  },
+  "devDependencies": {
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
+    "typedoc": "^0.28.17",
+    "typedoc-plugin-markdown": "^4.10.0",
+    "typescript": "^5.7.3",
+    "vitepress": "^1.6.3"
+  },
+  "keywords": [
+    "documentation",
+    "tapestry",
+    "minecraft",
+    "modding",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT"
+}
