@@ -1,14 +1,17 @@
 <template>
   <div>
-    <!-- Skip link for keyboard navigation accessibility -->
-    <a href="#VPContent" class="skip-link">Skip to main content</a>
-    
-    <!-- Default VitePress layout with main content wrapper -->
+    <!-- Skip link for keyboard navigation -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <DefaultTheme.Layout>
+
+      <!-- MAIN CONTENT ANCHOR -->
       <template #doc-before>
-        <!-- Anchor point for skip link - VitePress uses VPContent as the main content container -->
-        <span id="main-content" style="position: absolute; top: -1px;"></span>
+        <span id="main-content"></span>
       </template>
+
+      <div class="thread-divider"></div> 
+
     </DefaultTheme.Layout>
   </div>
 </template>
@@ -18,5 +21,8 @@ import DefaultTheme from 'vitepress/theme'
 </script>
 
 <style scoped>
-/* Skip link styles are defined in style.css */
+.hero-actions {
+  display: flex;
+  gap: 12px;
+}
 </style>

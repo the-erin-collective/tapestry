@@ -1,811 +1,641 @@
-/**
- * Custom theme styles for Tapestry documentation
- * 
- * This file defines the visual identity reflecting Tapestry's brand:
- * - TypeScript-first (deep blues, professional aesthetic)
- * - Explicit lifecycle (vibrant teal accents for flow and phases)
- * - Hard boundaries (distinct borders, clear structure, no ambiguity)
- * 
- * Design reference: docs/ChatGPT Image Mar 5, 2026, 02_16_03 AM.png
- */
+/* =================================
+   Tapestry Theme - Minecraft Inspired
+================================= */
 
-/* ============================================
-   Color Palette
-   ============================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;700&family=Righteous&display=swap');
 
 :root {
-  /* Brand Colors - Primary (Teal/Turquoise for lifecycle flow) */
-  --vp-c-brand-1: #0d9488;  /* Primary teal - main brand color (darker for better contrast) */
-  --vp-c-brand-2: #0f766e;  /* Darker teal - hover states */
-  --vp-c-brand-3: #115e59;  /* Darkest teal - active states */
-  --vp-c-brand-soft: rgba(13, 148, 136, 0.14);
+  /* Dark base colors (Minecraft-inspired) */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --bg-tertiary: #3a3a3a;
+
+  /* Neutral text */
+  --text-primary: #f5f5f5;
+  --text-secondary: #d0d0d0;
+  --text-muted: #888888;
+
+  --border: #404040;
+
+  /* Minecraft accent colors - vibrant and bold */
+  --accent-orange: #ff9800;
+  --accent-green: #4caf50;
+  --accent-cyan: #00bcd4;
+  --accent-red: #f44336;
+  --accent-yellow: #ffc107;
+  --accent-purple: #9c27b0;
+  --accent-blue: #2196f3;
+
+  /* VitePress CSS variables */
+  --vp-c-brand-1: #ff9800;
+  --vp-c-brand-2: #4caf50;
+  --vp-c-brand-3: #00bcd4;
+  --vp-c-accent-1: #ffc107;
+  --vp-c-accent-2: #9c27b0;
+  --vp-c-accent-3: #2196f3;
+
+  /* VitePress dark theme overrides */
+  --vp-c-bg: #1a1a1a;
+  --vp-c-bg-soft: #2d2d2d;
+  --vp-c-bg-mute: #3a3a3a;
+  --vp-c-bg-alt: #2d2d2d;
   
-  /* Accent Colors - TypeScript blue for code emphasis */
-  --vp-c-accent-1: #3178c6;  /* TypeScript blue */
-  --vp-c-accent-2: #235a97;  /* Darker blue for contrast */
-  --vp-c-accent-soft: rgba(49, 120, 198, 0.12);
+  --vp-c-text-1: #f5f5f5;
+  --vp-c-text-2: #d0d0d0;
+  --vp-c-text-3: #888888;
   
-  /* Text Colors - High contrast for readability */
-  --vp-c-text-1: #1f2937;  /* Primary text - dark gray */
-  --vp-c-text-2: #4b5563;  /* Secondary text - medium gray */
-  --vp-c-text-3: #6b7280;  /* Tertiary text - light gray */
-  --vp-c-text-code: #0f766e;  /* Inline code text - darker brand color for contrast */
+  --vp-c-divider: #404040;
+  --vp-c-border: #404040;
   
-  /* Background Colors - Clean, professional hierarchy */
-  --vp-c-bg: #ffffff;  /* Pure white background */
-  --vp-c-bg-soft: #f9fafb;  /* Subtle gray for sections */
-  --vp-c-bg-mute: #f3f4f6;  /* Muted gray for cards */
-  --vp-c-bg-alt: #f9fafb;  /* Alternative background */
-  --vp-c-bg-elv: #ffffff;  /* Elevated elements */
-  
-  /* Border Colors - Hard boundaries, clear separation */
-  --vp-c-border: #e5e7eb;  /* Standard borders */
-  --vp-c-divider: #e5e7eb;  /* Content dividers */
-  --vp-c-gutter: #e5e7eb;  /* Gutter lines */
-  --vp-c-border-hard: #d1d5db;  /* Emphasized borders for hard boundaries */
-  
-  /* Code Block Colors - TypeScript-optimized */
-  --vp-code-bg: #f3f4f6;  /* Light gray code background */
-  --vp-code-color: #1f2937;  /* Dark text in code */
-  --vp-code-block-bg: #1e293b;  /* Dark background for code blocks */
-  
-  /* Semantic Colors */
-  --vp-c-success: #10b981;  /* Success states */
-  --vp-c-warning: #f59e0b;  /* Warning states */
-  --vp-c-danger: #ef4444;  /* Error states */
-  --vp-c-info: #14b8a6;  /* Info states - brand color */
+  --vp-code-bg: #0d0d0d;
+  --vp-code-color: #f5f5f5;
+
+  --radius: 4px;
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
-/* Dark mode color overrides */
-.dark {
-  /* Brand colors - slightly brighter in dark mode for visibility */
-  --vp-c-brand-1: #14b8a6;
-  --vp-c-brand-2: #2dd4bf;
-  --vp-c-brand-3: #5eead4;
-  --vp-c-brand-soft: rgba(20, 184, 166, 0.16);
-  
-  /* Accent colors for dark mode */
-  --vp-c-accent-1: #5ba3e0;
-  --vp-c-accent-2: #3b82f6;
-  --vp-c-accent-soft: rgba(91, 163, 224, 0.16);
-  
-  /* Text colors - high contrast on dark backgrounds */
-  --vp-c-text-1: #f9fafb;
-  --vp-c-text-2: #e5e7eb;
-  --vp-c-text-3: #d1d5db;
-  --vp-c-text-code: #5eead4;
-  
-  /* Background colors - dark theme hierarchy */
-  --vp-c-bg: #0f172a;  /* Deep slate background */
-  --vp-c-bg-soft: #1e293b;  /* Elevated slate */
-  --vp-c-bg-mute: #334155;  /* Muted slate */
-  --vp-c-bg-alt: #1e293b;
-  --vp-c-bg-elv: #1e293b;
-  
-  /* Border colors - visible but subtle in dark mode */
-  --vp-c-border: #334155;
-  --vp-c-divider: #334155;
-  --vp-c-gutter: #334155;
-  --vp-c-border-hard: #475569;
-  
-  /* Code block colors for dark mode */
-  --vp-code-bg: #1e293b;
-  --vp-code-color: #e5e7eb;
-  --vp-code-block-bg: #0f172a;
-  
-  /* Semantic colors adjusted for dark mode */
-  --vp-c-success: #34d399;
-  --vp-c-warning: #fbbf24;
-  --vp-c-danger: #f87171;
-  --vp-c-info: #2dd4bf;
+/* =================================
+   Base
+================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-/* ============================================
-   Typography
-   ============================================ */
-
-:root {
-  /* Font Families */
-  /* Use system font stack for optimal performance and native feel */
-  --vp-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  
-  /* Monospace for code - prioritize developer-friendly fonts */
-  --vp-font-family-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, Menlo, Consolas, 'Courier New', monospace;
-  
-  /* Font Sizes - Hierarchical scale for clear information architecture */
-  --vp-font-size-root: 16px;
-  --vp-font-size-base: 1rem;  /* 16px */
-  --vp-font-size-sm: 0.875rem;  /* 14px */
-  --vp-font-size-lg: 1.125rem;  /* 18px */
-  
-  /* Heading Sizes - Clear hierarchy */
-  --vp-font-size-h1: 2.5rem;  /* 40px */
-  --vp-font-size-h2: 2rem;  /* 32px */
-  --vp-font-size-h3: 1.5rem;  /* 24px */
-  --vp-font-size-h4: 1.25rem;  /* 20px */
-  --vp-font-size-h5: 1.125rem;  /* 18px */
-  --vp-font-size-h6: 1rem;  /* 16px */
-  
-  /* Font Weights - Emphasis and hierarchy */
-  --vp-font-weight-normal: 400;
-  --vp-font-weight-medium: 500;
-  --vp-font-weight-semibold: 600;
-  --vp-font-weight-bold: 700;
-  
-  /* Line Heights - Optimized for readability */
-  --vp-line-height-base: 1.7;  /* Body text */
-  --vp-line-height-heading: 1.3;  /* Headings */
-  --vp-line-height-code: 1.5;  /* Code blocks */
-  
-  /* Letter Spacing - Subtle refinements */
-  --vp-letter-spacing-tight: -0.02em;  /* Headings */
-  --vp-letter-spacing-normal: 0;  /* Body */
-  --vp-letter-spacing-wide: 0.02em;  /* Uppercase text */
-}
-
-/* Apply typography settings to body */
+html,
 body {
-  font-family: var(--vp-font-family-base);
-  font-size: var(--vp-font-size-base);
-  line-height: var(--vp-line-height-base);
-  font-weight: var(--vp-font-weight-normal);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Heading typography - clear hierarchy with TypeScript-first aesthetic */
-.vp-doc h1,
-.vp-doc h2,
-.vp-doc h3,
-.vp-doc h4,
-.vp-doc h5,
-.vp-doc h6 {
-  font-weight: var(--vp-font-weight-semibold);
-  line-height: var(--vp-line-height-heading);
-  letter-spacing: var(--vp-letter-spacing-tight);
-  color: var(--vp-c-text-1);
-}
-
-.vp-doc h1 {
-  font-size: var(--vp-font-size-h1);
-  font-weight: var(--vp-font-weight-bold);
-}
-
-.vp-doc h2 {
-  font-size: var(--vp-font-size-h2);
-  border-bottom: 2px solid var(--vp-c-border-hard);
-  padding-bottom: 0.5rem;
-  margin-top: 2.5rem;
-}
-
-.vp-doc h3 {
-  font-size: var(--vp-font-size-h3);
-  margin-top: 2rem;
-}
-
-/* Code typography - optimized for TypeScript */
-.vp-doc code {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.9em;
-  color: var(--vp-c-text-code);
-  background-color: var(--vp-code-bg);
-  padding: 0.2em 0.4em;
-  border-radius: 4px;
-  font-weight: var(--vp-font-weight-medium);
-}
-
-.vp-doc pre code {
-  font-size: var(--vp-font-size-sm);
-  line-height: var(--vp-line-height-code);
-  background-color: transparent;
+  margin: 0;
   padding: 0;
+
+  background: var(--bg-primary);
+  color: var(--text-primary);
+
+  font-family: 'Inconsolata', monospace;
+  line-height: 1.6;
 }
 
-/* ============================================
-   Accessibility Enhancements
-   ============================================ */
+/* =================================
+   Typography
+================================= */
 
-/* Enhanced focus indicators for keyboard navigation */
-:focus-visible {
-  outline: 2px solid var(--vp-c-brand-1);
-  outline-offset: 2px;
-  border-radius: 2px;
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Righteous', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
-/* Ensure buttons have visible focus */
-button:focus-visible,
-.vp-button:focus-visible {
-  outline: 2px solid var(--vp-c-brand-1);
-  outline-offset: 2px;
+h1 {
+  font-size: 2.5rem;
+  color: var(--accent-orange);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
 }
 
-/* Navigation links focus */
-.vp-nav a:focus-visible,
-.vp-sidebar-link:focus-visible {
-  outline: 2px solid var(--vp-c-brand-1);
-  outline-offset: 2px;
+h2 {
+  font-size: 1.8rem;
+  color: var(--accent-cyan);
+  border-bottom: 3px solid var(--accent-orange);
+  padding-bottom: 8px;
+  margin-bottom: 20px;
 }
 
-/* Skip link for screen readers and keyboard users */
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: var(--vp-c-brand-1);
-  color: white;
-  padding: 8px 16px;
+h3 {
+  font-size: 1.3rem;
+  color: var(--accent-green);
+}
+
+/* =================================
+   Layout
+================================= */
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.section {
+  padding: 60px 0;
+  border-bottom: 2px solid var(--border);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+/* =================================
+   Header
+================================= */
+
+header {
+  border-bottom: 4px solid var(--accent-orange);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.navbar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.logo {
+  font-family: 'Righteous', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent-orange);
+  text-transform: uppercase;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+}
+
+.nav-links a {
+  color: var(--text-secondary);
   text-decoration: none;
-  z-index: 100;
-  border-radius: 0 0 4px 0;
-  font-weight: var(--vp-font-weight-semibold);
+  font-size: 0.95rem;
+  font-family: 'Righteous', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
 }
 
-.skip-link:focus {
-  top: 0;
+.nav-links a:hover {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
 }
 
-/* Ensure all interactive elements are keyboard accessible */
-a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
-  /* Focus styles handled by :focus-visible above */
+/* =================================
+   Hero
+================================= */
+
+.hero {
+  padding: 60px 0;
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  text-align: center;
 }
 
-/* Remove focus outline for mouse users (only show for keyboard) */
-:focus:not(:focus-visible) {
-  outline: none;
+.hero-content {
+  flex: 1;
 }
 
-/* ============================================
-   Custom Styling - Tapestry Brand Identity
-   ============================================ */
-
-/* Links - Clear, accessible, with brand color */
-.vp-doc a {
-  color: var(--vp-c-brand-1);
-  text-decoration: underline;
-  text-decoration-color: var(--vp-c-brand-soft);
-  text-underline-offset: 2px;
-  transition: all 0.2s ease;
-  font-weight: var(--vp-font-weight-medium);
-}
-
-.vp-doc a:hover {
-  text-decoration-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-2);
-}
-
-/* Hard boundaries - distinct borders on containers */
-.vp-doc div[class*='language-'],
-.vp-doc .custom-block {
-  border: 1px solid var(--vp-c-border-hard);
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-/* Code blocks with TypeScript emphasis */
-.vp-doc [class*='language-typescript'],
-.vp-doc [class*='language-ts'] {
-  border-left: 3px solid var(--vp-c-accent-1);
-  background: var(--vp-code-block-bg);
-}
-
-.vp-doc [class*='language-typescript'] .line,
-.vp-doc [class*='language-ts'] .line {
-  /* TypeScript code gets subtle brand color accent */
-  border-left: 2px solid transparent;
-  padding-left: 1rem;
-}
-
-.vp-doc [class*='language-typescript']:hover,
-.vp-doc [class*='language-ts']:hover {
-  border-left-color: var(--vp-c-brand-1);
-}
-
-/* Custom blocks - lifecycle phases, warnings, tips */
-.vp-doc .custom-block {
-  padding: 1rem 1.25rem;
-  margin: 1.5rem 0;
-}
-
-.vp-doc .custom-block.tip {
-  border-left: 4px solid var(--vp-c-brand-1);
-  background-color: var(--vp-c-brand-soft);
-}
-
-.vp-doc .custom-block.warning {
-  border-left: 4px solid var(--vp-c-warning);
-  background-color: rgba(245, 158, 11, 0.1);
-}
-
-.vp-doc .custom-block.danger {
-  border-left: 4px solid var(--vp-c-danger);
-  background-color: rgba(239, 68, 68, 0.1);
-}
-
-/* Tables - structured data with hard boundaries */
-.vp-doc table {
-  border-collapse: separate;
-  border-spacing: 0;
-  border: 1px solid var(--vp-c-border-hard);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.vp-doc table th {
-  background-color: var(--vp-c-bg-soft);
-  font-weight: var(--vp-font-weight-semibold);
-  border-bottom: 2px solid var(--vp-c-border-hard);
-}
-
-.vp-doc table td,
-.vp-doc table th {
-  border-right: 1px solid var(--vp-c-border);
-  padding: 0.75rem 1rem;
-}
-
-.vp-doc table td:last-child,
-.vp-doc table th:last-child {
-  border-right: none;
-}
-
-/* Buttons and interactive elements */
-.vp-button {
-  font-weight: var(--vp-font-weight-medium);
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.vp-button.brand {
-  background-color: var(--vp-c-brand-1);
-  color: white;
-  border: 2px solid var(--vp-c-brand-1);
-}
-
-.vp-button.brand:hover {
-  background-color: var(--vp-c-brand-2);
-  border-color: var(--vp-c-brand-2);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3);
-}
-
-/* Navigation - clear hierarchy and boundaries */
-.vp-nav {
-  border-bottom: 1px solid var(--vp-c-border-hard);
-  backdrop-filter: blur(8px);
-}
-
-/* Sidebar - organized structure */
-.vp-sidebar {
-  border-right: 1px solid var(--vp-c-border-hard);
-}
-
-.vp-sidebar-link {
-  transition: all 0.2s ease;
-}
-
-.vp-sidebar-link:hover {
-  color: var(--vp-c-brand-1);
-  padding-left: 1.25rem;
-}
-
-.vp-sidebar-link.active {
-  color: var(--vp-c-brand-1);
-  font-weight: var(--vp-font-weight-semibold);
-  border-left: 3px solid var(--vp-c-brand-1);
-}
-
-/* ============================================
-   Responsive Adjustments
-   ============================================ */
-
-/* Mobile devices (320px - 768px) */
-@media (max-width: 768px) {
-  :root {
-    --vp-nav-height: 56px;
-    --vp-font-size-root: 14px;
-    --vp-font-size-h1: 2rem;  /* 32px */
-    --vp-font-size-h2: 1.75rem;  /* 28px */
-    --vp-font-size-h3: 1.375rem;  /* 22px */
-    --vp-font-size-h4: 1.125rem;  /* 18px */
-  }
-  
-  /* Content padding adjustments for mobile */
-  .vp-doc {
-    padding: 24px 16px 96px;
-  }
-  
-  /* Heading spacing for mobile */
-  .vp-doc h1 {
-    margin-top: 1.5rem;
-  }
-  
-  .vp-doc h2 {
-    margin-top: 2rem;
-    padding-bottom: 0.375rem;
-  }
-  
-  .vp-doc h3 {
-    margin-top: 1.5rem;
-  }
-  
-  /* Hero section mobile adjustments */
-  .vp-hero {
-    padding: 2rem 1rem;
-  }
-  
-  .vp-hero .name {
-    font-size: 2rem;  /* Smaller hero text on mobile */
-  }
-  
-  .vp-hero .tagline {
-    font-size: 1rem;
-    padding: 0 1rem;
-  }
-  
-  /* Feature cards stack on mobile */
-  .vp-features {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-    margin: 2rem 0;
-  }
-  
-  .vp-feature {
-    padding: 1rem;
-  }
-  
-  /* Code blocks mobile optimization */
-  .vp-doc pre {
-    padding: 1rem;
-    margin: 1rem -16px;  /* Full width on mobile */
-    border-radius: 0;
-  }
-  
-  .vp-doc code {
-    font-size: 0.85em;
-    word-break: break-word;
-  }
-  
-  /* Tables scroll horizontally on mobile */
-  .vp-doc table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-  
-  /* Navigation adjustments */
-  .vp-nav {
-    padding: 0 1rem;
-  }
-  
-  /* Sidebar full width on mobile when open */
-  .vp-sidebar {
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--vp-c-border-hard);
-  }
-  
-  /* Button sizing for mobile */
-  .vp-button {
-    padding: 0.75rem 1.5rem;
-    font-size: 0.9rem;
-    width: 100%;
-    display: block;
-    margin: 0.5rem 0;
-  }
-  
-  /* Custom blocks mobile padding */
-  .vp-doc .custom-block {
-    padding: 0.875rem 1rem;
-    margin: 1rem 0;
-  }
-}
-
-/* Small mobile devices (320px - 480px) */
-@media (max-width: 480px) {
-  :root {
-    --vp-font-size-root: 14px;
-    --vp-font-size-h1: 1.75rem;  /* 28px */
-    --vp-font-size-h2: 1.5rem;  /* 24px */
-    --vp-font-size-h3: 1.25rem;  /* 20px */
-  }
-  
-  .vp-doc {
-    padding: 20px 12px 80px;
-  }
-  
-  .vp-hero .name {
-    font-size: 1.75rem;
-  }
-  
-  .vp-hero .tagline {
-    font-size: 0.9rem;
-  }
-}
-
-/* Tablet devices (768px - 1024px) */
-@media (min-width: 768px) and (max-width: 1024px) {
-  :root {
-    --vp-font-size-root: 15px;
-  }
-  
-  /* Content padding for tablet */
-  .vp-doc {
-    padding: 32px 32px 96px;
-    max-width: 960px;
-  }
-  
-  /* Hero section tablet adjustments */
-  .vp-hero {
-    padding: 3rem 2rem;
-  }
-  
-  .vp-hero .name {
-    font-size: 3rem;
-  }
-  
-  .vp-hero .tagline {
-    font-size: 1.125rem;
-  }
-  
-  /* Feature cards 2-column grid on tablet */
-  .vp-features {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem;
-  }
-  
-  /* Code blocks tablet optimization */
-  .vp-doc pre {
-    padding: 1.125rem 1.25rem;
-  }
-  
-  /* Sidebar width for tablet */
-  .vp-sidebar {
-    width: 280px;
-  }
-  
-  /* Navigation spacing */
-  .vp-nav {
-    padding: 0 2rem;
-  }
-  
-  /* Tables better spacing on tablet */
-  .vp-doc table td,
-  .vp-doc table th {
-    padding: 0.625rem 0.875rem;
-  }
-}
-
-/* Desktop optimizations (1024px+) */
-@media (min-width: 1024px) {
-  :root {
-    --vp-font-size-root: 16px;
-  }
-  
-  /* Content padding and max-width for desktop */
-  .vp-doc {
-    padding: 48px 48px 96px;
-    max-width: 1200px;
-  }
-  
-  /* Hero section desktop layout */
-  .vp-hero {
-    padding: 4rem 2rem;
-  }
-  
-  .vp-hero .name {
-    font-size: 3.5rem;
-  }
-  
-  .vp-hero .tagline {
-    font-size: 1.25rem;
-  }
-  
-  /* Feature cards 3-column grid on desktop */
-  .vp-features {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-  }
-  
-  /* Code blocks desktop optimization */
-  .vp-doc pre {
-    padding: 1.25rem 1.5rem;
-  }
-  
-  /* Sidebar width for desktop */
-  .vp-sidebar {
-    width: 320px;
-  }
-  
-  /* Navigation spacing */
-  .vp-nav {
-    padding: 0 3rem;
-  }
-  
-  /* Hover effects only on desktop (no touch) */
-  @media (hover: hover) {
-    .vp-feature:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(20, 184, 166, 0.15);
-    }
-    
-    .vp-button.brand:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3);
-    }
-    
-    .vp-sidebar-link:hover {
-      padding-left: 1.25rem;
-    }
-  }
-}
-
-/* Large desktop (1440px+) */
-@media (min-width: 1440px) {
-  .vp-doc {
-    max-width: 1400px;
-    padding: 48px 64px 96px;
-  }
-  
-  .vp-hero {
-    padding: 5rem 3rem;
-  }
-  
-  .vp-sidebar {
-    width: 360px;
-  }
-}
-
-/* Ultra-wide displays (1920px+) */
-@media (min-width: 1920px) {
-  .vp-doc {
-    max-width: 1600px;
-  }
-}
-
-/* Landscape mobile devices */
-@media (max-width: 768px) and (orientation: landscape) {
-  .vp-hero {
-    padding: 2rem 1rem;
-  }
-  
-  .vp-hero .name {
-    font-size: 2.5rem;
-  }
-  
-  .vp-doc {
-    padding: 24px 24px 80px;
-  }
-}
-
-/* High DPI displays (Retina) */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-  /* Ensure crisp rendering on high DPI displays */
-  body {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-  
-  /* Slightly thinner borders on retina */
-  .vp-doc table,
-  .vp-doc div[class*='language-'],
-  .vp-doc .custom-block {
-    border-width: 0.5px;
-  }
-}
-
-/* ============================================
-   Brand Identity Enhancements
-   ============================================ */
-
-/* TypeScript-first: Emphasize code and technical content */
-.vp-doc pre {
-  position: relative;
-  background: var(--vp-code-block-bg);
-  border-radius: 8px;
-  padding: 1.25rem 1.5rem;
-  margin: 1.5rem 0;
-  overflow-x: auto;
-}
-
-/* Explicit lifecycle: Visual indicators for phase-related content */
-.vp-doc .lifecycle-phase {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  background: var(--vp-c-brand-soft);
-  color: var(--vp-c-brand-1);
-  border-radius: 4px;
-  font-size: var(--vp-font-size-sm);
-  font-weight: var(--vp-font-weight-semibold);
-  border: 1px solid var(--vp-c-brand-1);
-}
-
-/* Hard boundaries: Clear visual separation */
-.vp-doc hr {
-  border: none;
-  border-top: 2px solid var(--vp-c-border-hard);
-  margin: 2.5rem 0;
-}
-
-/* Deterministic behavior: Consistent spacing and alignment */
-.vp-doc > * + * {
-  margin-top: 1rem;
-}
-
-.vp-doc > h2 + *,
-.vp-doc > h3 + * {
-  margin-top: 1.5rem;
-}
-
-/* Hero section enhancements for landing page */
-.vp-hero {
-  padding: 4rem 2rem;
-}
-
-.vp-hero .name {
+.hero h1 {
   font-size: 3.5rem;
-  font-weight: var(--vp-font-weight-bold);
-  letter-spacing: var(--vp-letter-spacing-tight);
-  background: linear-gradient(135deg, var(--vp-c-brand-1) 0%, var(--vp-c-accent-1) 100%);
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--accent-orange), var(--accent-yellow));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.vp-hero .tagline {
-  font-size: var(--vp-font-size-lg);
-  color: var(--vp-c-text-2);
-  max-width: 600px;
-  margin: 1.5rem auto;
+.hero p {
+  max-width: 700px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.hero-image {
+  flex: 0 0 auto;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px solid var(--accent-cyan);
+  background: rgba(0, 188, 212, 0.1);
+  box-shadow: 0 0 20px rgba(0, 188, 212, 0.3);
+}
+
+/* =================================
+   Buttons
+================================= */
+
+.button {
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-family: 'Righteous', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border: 2px solid var(--accent-orange);
+  background: transparent;
+  color: var(--accent-orange);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+.button:hover {
+  background: var(--accent-orange);
+  color: var(--bg-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(255, 152, 0, 0.4);
+}
+
+.button.brand {
+  background: var(--accent-orange);
+  color: var(--bg-primary);
+  border-color: var(--accent-orange);
+}
+
+.button.brand:hover {
+  background: var(--accent-yellow);
+  border-color: var(--accent-yellow);
+}
+
+/* =================================
+   Feature Grid
+================================= */
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin: 40px 0;
+}
+
+.feature-card {
+  background: var(--bg-secondary);
+  border: 3px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent-orange), var(--accent-cyan), var(--accent-green));
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 8px 20px rgba(0, 188, 212, 0.2);
+}
+
+.feature-card h3 {
+  margin-top: 8px;
+  margin-bottom: 12px;
+  font-size: 1.2rem;
+  color: var(--accent-green);
+}
+
+.feature-card p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
-/* Feature cards - structured presentation */
-.vp-features {
-  display: grid;
-  gap: 1.5rem;
-  margin: 3rem 0;
+/* =================================
+   Accent System - Colored Borders
+================================= */
+
+.thread-divider {
+  height: 4px;
+  margin: 40px 0;
+  background: linear-gradient(
+    90deg,
+    var(--accent-orange) 0%,
+    var(--accent-yellow) 20%,
+    var(--accent-green) 40%,
+    var(--accent-cyan) 60%,
+    var(--accent-blue) 80%,
+    var(--accent-purple) 100%
+  );
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-.vp-feature {
-  padding: 1.5rem;
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-border-hard);
-  border-radius: 8px;
+.accent-orange { border-left: 4px solid var(--accent-orange); }
+.accent-green { border-left: 4px solid var(--accent-green); }
+.accent-cyan { border-left: 4px solid var(--accent-cyan); }
+.accent-red { border-left: 4px solid var(--accent-red); }
+.accent-yellow { border-left: 4px solid var(--accent-yellow); }
+.accent-purple { border-left: 4px solid var(--accent-purple); }
+.accent-blue { border-left: 4px solid var(--accent-blue); }
+
+/* =================================
+   Code Blocks
+================================= */
+
+pre {
+  background: var(--vp-code-bg);
+  border: 2px solid var(--accent-cyan);
+  border-radius: var(--radius);
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+code {
+  font-family: 'Inconsolata', monospace;
+  color: var(--vp-code-color);
+}
+
+/* =================================
+   Tables
+================================= */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 24px 0;
+  border: 2px solid var(--accent-orange);
+}
+
+thead {
+  background: rgba(255, 152, 0, 0.15);
+  border-bottom: 3px solid var(--accent-orange);
+}
+
+th {
+  padding: 12px 16px;
+  text-align: left;
+  font-family: 'Righteous', sans-serif;
+  color: var(--accent-orange);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:hover {
+  background: rgba(0, 188, 212, 0.1);
+}
+
+/* =================================
+   Blockquote
+================================= */
+
+blockquote {
+  border-left: 4px solid var(--accent-cyan);
+  padding-left: 20px;
+  margin: 24px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+  background: rgba(0, 188, 212, 0.05);
+  padding: 16px 20px;
+}
+
+/* =================================
+   Footer
+================================= */
+
+footer {
+  border-top: 4px solid var(--accent-orange);
+  margin-top: 60px;
+  background: var(--bg-secondary);
+  padding: 40px 0;
+}
+
+.footer-inner {
+  padding: 20px 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+/* =================================
+   VitePress Hero Overrides
+================================= */
+
+.VPHero {
+  padding-top: 60px !important;
+  padding-bottom: 40px !important;
+}
+
+.VPHero .container {
+  max-width: 1200px;
+}
+
+.VPHero .main {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+.VPHero .name {
+  font-family: 'Righteous', sans-serif !important;
+  font-size: 3.5rem !important;
+  line-height: 1.2 !important;
+  margin-bottom: 12px !important;
+  background: linear-gradient(135deg, var(--accent-orange), var(--accent-yellow)) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  text-transform: uppercase !important;
+  letter-spacing: 2px !important;
+}
+
+.VPHero .text {
+  font-family: 'Righteous', sans-serif !important;
+  font-size: 1.5rem !important;
+  line-height: 1.3 !important;
+  margin-bottom: 16px !important;
+  color: var(--accent-cyan) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+}
+
+.VPHero .tagline {
+  font-family: 'Inconsolata', monospace !important;
+  font-size: 1rem !important;
+  line-height: 1.6 !important;
+  max-width: 700px !important;
+  margin-bottom: 32px !important;
+  color: var(--text-secondary) !important;
+}
+
+.VPHero .image-container {
+  width: 180px !important;
+  height: 180px !important;
+  margin-top: 24px !important;
+  border: 4px solid var(--accent-cyan) !important;
+  background: rgba(0, 188, 212, 0.1) !important;
+  box-shadow: 0 0 24px rgba(0, 188, 212, 0.3) !important;
+}
+
+.VPHero .image-bg {
+  width: 180px !important;
+  height: 180px !important;
+}
+
+.VPHero .actions {
+  padding-top: 24px !important;
+  gap: 16px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+}
+
+.VPHero .action {
+  padding: 12px 28px !important;
+  font-size: 0.95rem !important;
+  font-family: 'Righteous', sans-serif !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  border-radius: var(--radius) !important;
+}
+
+/* =================================
+   Feature Cards - VitePress
+================================= */
+
+.VPFeatures {
+  padding-top: 60px !important;
+  padding-bottom: 40px !important;
+}
+
+.VPFeatures .items {
+  gap: 24px !important;
+}
+
+.VPFeatures .item {
+  padding: 24px !important;
+  border: 3px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  background: var(--bg-secondary) !important;
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.VPFeatures .item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent-orange), var(--accent-cyan), var(--accent-green));
+}
+
+.VPFeatures .item:hover {
+  transform: translateY(-4px) !important;
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 8px 20px rgba(0, 188, 212, 0.2) !important;
+}
+
+.VPFeatures .title {
+  font-family: 'Righteous', sans-serif !important;
+  font-size: 1.2rem !important;
+  color: var(--accent-green) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  margin-bottom: 12px !important;
+}
+
+.VPFeatures .details {
+  font-size: 0.95rem !important;
+  line-height: 1.6 !important;
+  color: var(--text-secondary) !important;
+}
+
+/* =================================
+   Content Sections
+================================= */
+
+.content {
+  padding: 40px 0;
+}
+
+.content h2 {
+  margin-top: 40px;
+  margin-bottom: 20px;
+}
+
+.content p {
+  line-height: 1.8;
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+}
+
+.content ul, .content ol {
+  margin: 20px 0;
+  padding-left: 24px;
+}
+
+.content li {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+
+.content a {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-cyan);
   transition: all 0.3s ease;
 }
 
-.vp-feature:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(20, 184, 166, 0.15);
-  border-color: var(--vp-c-brand-1);
+.content a:hover {
+  color: var(--accent-orange);
+  border-bottom-color: var(--accent-orange);
 }
 
-.vp-feature .title {
-  font-size: var(--vp-font-size-h4);
-  font-weight: var(--vp-font-weight-semibold);
-  color: var(--vp-c-text-1);
-  margin-bottom: 0.75rem;
-}
+/* =================================
+   Responsive
+================================= */
 
-.vp-feature .details {
-  color: var(--vp-c-text-2);
-  line-height: 1.6;
-}
-
-/* Print styles - maintain readability */
-@media print {
-  .vp-nav,
-  .vp-sidebar,
-  .vp-footer {
-    display: none;
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2rem;
   }
-  
-  .vp-doc {
-    max-width: 100%;
-    padding: 0;
+
+  h2 {
+    font-size: 1.5rem;
   }
-  
-  .vp-doc a {
-    color: var(--vp-c-text-1);
-    text-decoration: underline;
+
+  .hero {
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  .features {
+    grid-template-columns: 1fr;
+  }
+
+  .VPHero .name {
+    font-size: 2.5rem !important;
+  }
+
+  .VPHero .text {
+    font-size: 1.2rem !important;
+  }
+
+  .nav-links {
+    gap: 16px;
+  }
+
+  .nav-links a {
+    font-size: 0.85rem;
   }
 }
