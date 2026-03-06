@@ -116,7 +116,8 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/alizzycraft/tapestry' }
+      { icon: 'github', link: 'https://github.com/alizzycraft/tapestry' },
+      { icon: 'patreon', link: 'https://www.patreon.com/cw/lizzyrosa' }
     ],
 
     editLink: {
