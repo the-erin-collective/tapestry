@@ -37,6 +37,17 @@ export default defineConfig({
     logo: '/logo.png',
 
     nav: [
+      { text: 'Download latest version', link: 'https://github.com/alizzycraft/tapestry/releases/latest' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
+      { text: '', link: '' },
       { text: 'Guides', link: '/guide/getting-started' },
       { text: 'API', link: '/api/' },
       { text: 'Mods', link: '/mods/' }
