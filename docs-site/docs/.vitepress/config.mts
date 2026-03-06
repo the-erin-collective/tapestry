@@ -37,7 +37,7 @@ export default defineConfig({
     logo: '/logo.png',
 
     nav: [
-      { text: 'Download latest version', link: 'https://github.com/alizzycraft/tapestry/releases/latest' },
+      { text: 'Download the latest version', link: 'https://github.com/alizzycraft/tapestry/releases/latest' },
       { text: '', link: '' },
       { text: '', link: '' },
       { text: '', link: '' },
