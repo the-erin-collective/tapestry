@@ -66,8 +66,8 @@ function addCacheBustingToTWILALinks() {
     // Add cache-busting hash to prevent bfcache issues
     // The hash is ignored by the server but forces browser to treat it as a new navigation
     const href = anchor.getAttribute('href')
-    if (href && !href.includes('#')) {
-      anchor.setAttribute('href', href + '#nav')
+    if (href && !href.includes('?')) {
+      anchor.setAttribute('href', href + '?n=tapesty')
     }
   })
 }
