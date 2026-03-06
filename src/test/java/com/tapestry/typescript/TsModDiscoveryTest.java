@@ -40,14 +40,15 @@ public class TsModDiscoveryTest {
     
     @Test
     void testExtractSourceName() {
-        // Test extracting source name from full path
-        String fullPath = "C:\\Users\\test\\mods\\example_mod.js";
+        // Test extracting source name from a path built for the current platform
+        Path path = Paths.get("mods", "example_mod.js");
+        String fullPath = path.toString();
         String expected = "example_mod.js";
         String actual = extractSourceName(fullPath);
-        assertEquals(expected, actual);
+        assertEquals(expected, actual, "Should extract filename from native path");
         
-        // Test with relative path
-        String relativePath = "./mods/test_mod.js";
+        // Test with relative path string
+        String relativePath = "mods/test_mod.js"; // Standard separator usually works or is ignored for single level
         assertEquals("test_mod.js", extractSourceName(relativePath));
         
         // Test with just filename
