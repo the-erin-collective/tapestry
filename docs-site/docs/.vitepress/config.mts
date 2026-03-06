@@ -105,11 +105,11 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/your-org/tapestry' }
+      { icon: 'github', link: 'https://github.com/alizzycraft/tapestry' }
     ],
 
     editLink: {
-      pattern: 'https://github.com/your-org/tapestry/edit/main/docs-site/docs/:path',
+      pattern: 'https://github.com/alizzycraft/tapestry/edit/docs/docs-site/docs/:path',
       text: 'Edit this page on GitHub'
     },
 
