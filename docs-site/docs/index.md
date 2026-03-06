@@ -147,7 +147,9 @@ A lightweight JSON-RPC transport enables remote procedure calls and event pushes
 
 ---
 
-## Getting Started
+## Getting Started with Tapestry Development
+
+Want to contribute to Tapestry or build it from source? Here's how to set up the development environment.
 
 ### Prerequisites
 
@@ -178,9 +180,7 @@ Use Loom tasks provided by the build:
 
 These launch a Minecraft instance with the current JAR on the classpath. Mods live under `run/mods`.
 
----
-
-## Testing
+### Testing
 
 Unit tests (JUnit) cover the core lifecycle, phase checks, extension registry, and runtime-side helpers. They do **not** require a Minecraft client.
 
@@ -189,6 +189,47 @@ Unit tests (JUnit) cover the core lifecycle, phase checks, extension registry, a
 ```
 
 Integration tests that exercise Fabric or the JS engine can be invoked with `./gradlew integrationTest` when they are added.
+
+---
+
+## Getting Started with Mod Development
+
+Ready to build your first Tapestry mod? Here's what you need to know.
+
+### Prerequisites
+
+- Tapestry framework installed (download from releases)
+- Minecraft with Fabric Loader
+- Node.js and TypeScript (for mod development)
+- A code editor (VS Code recommended)
+
+### Creating Your First Mod
+
+1. Create a new directory for your mod
+2. Set up your TypeScript configuration
+3. Write your mod entry point:
+
+```ts
+tapestry.mod.define({
+  onLoad(api) {
+    console.log("Hello from my first Tapestry mod!");
+  }
+});
+```
+
+4. Compile your TypeScript to JavaScript
+5. Place the compiled mod in your `mods` folder
+6. Launch Minecraft
+
+### Next Steps
+
+Check out the [Getting Started Guide](/guide/getting-started) for a complete walkthrough of mod development, including:
+
+- Project structure and configuration
+- Using the Tapestry API
+- Handling lifecycle phases
+- Client/server communication
+- Debugging and testing your mods
 
 ---
 
