@@ -92,11 +92,7 @@ java {
 // Include GraalVM and Jackson dependencies in JAR
 jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from {
-        configurations.runtimeClasspath.filter { it.name.contains('graal') || it.name.contains('js') || it.name.contains('truffle') || it.name.contains('jackson') }
-        .collect { it.isDirectory() ? it : zipTree(it) }
-    }
-    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
+    archiveClassifier = 'raw'
 }
 
 test {
@@ -232,7 +228,7 @@ shadowJar {
     // Temporarily disable minimization to avoid ServiceLoader issues
     // minimize()
     
-    archiveClassifier = 'shadow'
+    archiveClassifier = 'dev'
     
     // Ensure Java 21 compatibility
     sourceCompatibility = JavaVersion.VERSION_21
@@ -243,4 +239,5 @@ shadowJar {
 remapJar {
     dependsOn shadowJar
     inputFile = shadowJar.archiveFile
+    archiveClassifier = null
 }
