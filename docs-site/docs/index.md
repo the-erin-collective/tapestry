@@ -6,8 +6,8 @@ hero:
   text: "TypeScript-First Modding Framework for Minecraft"
   tagline: "A structured, type-safe modding platform that enforces lifecycle safety and brings predictable development to Minecraft mods."
   image:
-    src: /logo.png
-    alt: Tapestry Logo
+    src: /banner.jpg
+    alt: Tapestry Banner
   actions:
     - theme: brand
       text: Getting Started
@@ -20,27 +20,27 @@ hero:
       link: https://github.com/alizzycraft/tapestry
 
 features:
-  - title: 📋 Explicit Lifecycle Phases
+  - title: Explicit Lifecycle Phases
     details: >
       Tapestry divides mod startup into discrete, enforced phases. Every API call validates the current phase and throws immediately if used incorrectly. This prevents timing-related bugs and ensures mods interact with Minecraft only when it is safe to do so.
 
-  - title: 🧩 Capability-Driven Extensions
+  - title: Capability-Driven Extensions
     details: >
       Extensions declare capabilities and dependencies rather than exposing a monolithic API. This allows safe integration between systems and prevents cross-mod violations through a structured capability model.
 
-  - title: 📘 TypeScript-First Development
+  - title: TypeScript-First Development
     details: >
       Write mods in TypeScript with full type safety. A GraalVM runtime executes your code while the Java core enforces safety checks. Modern tooling and familiar syntax meet runtime protection.
 
-  - title: 🛡️ Frozen Host API
+  - title: Frozen Host API
     details: >
       The host API is sealed during startup and becomes immutable before mod code runs. This guarantees a stable runtime surface and prevents unexpected mutations during execution.
 
-  - title: ⚙️ Deterministic Execution
+  - title: Deterministic Execution
     details: >
       Predictable execution ordering and phase transitions eliminate timing-related bugs common in traditional modding. Systems initialize in a known order with well-defined API availability.
 
-  - title: 🏗️ Built for Complex Mods
+  - title: Built for Complex Mods
     details: >
       Explicit lifecycle stages and capability declarations allow large mods to remain maintainable as they grow. Structured initialization prevents the fragility that emerges from ad-hoc ordering.
 ---
