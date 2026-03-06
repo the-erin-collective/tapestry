@@ -1,7 +1,8 @@
 {
   "$schema": "https://typedoc.org/schema.json",
+  "name": "Tapestry API",
   "entryPoints": [
-    "../src/main/resources/mikel/mikel-0.32.0/index.d.ts"
+    "../types.d.ts"
   ],
   "out": "./docs/api",
   "plugin": [
@@ -13,11 +14,15 @@
   "categorizeByGroup": true,
   "categoryOrder": [
     "Core",
-    "Types",
-    "Helpers",
-    "Functions",
+    "Integration",
+    "Gameplay",
+    "State",
     "Utilities",
     "*"
   ],
-  "skipErrorChecking": true
+  "skipErrorChecking": true,
+  "hidePageTitle": true,
+  "hideBreadcrumbs": true,
+  "entryFileName": "index.md",
+  "flattenOutputFiles": true
 }

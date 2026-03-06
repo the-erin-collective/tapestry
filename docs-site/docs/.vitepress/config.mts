@@ -5,14 +5,14 @@ export default defineConfig({
   title: "Tapestry",
   description: "TypeScript-first modding framework for Minecraft",
   base: '/tapestry/',
-  
+
   // Ignore dead links for now - will be fixed in link validation task
   ignoreDeadLinks: true,
-  
+
   // Build output configuration
   outDir: '.vitepress/dist',
   cacheDir: '.vitepress/cache',
-  
+
   // Asset optimization
   vite: {
     build: {
@@ -23,7 +23,7 @@ export default defineConfig({
     // Optimize asset handling
     assetsInclude: ['**/*.svg', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif'],
   },
-  
+
   // Favicon configuration
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/tapestry/favicon.svg' }],
@@ -31,17 +31,17 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/tapestry/favicon-16x16.png' }],
     ['link', { rel: 'shortcut icon', href: '/tapestry/favicon.ico' }]
   ],
-  
+
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     logo: '/logo.png',
-    
+
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'API', link: '/api/' },
       { text: 'Architecture', link: '/guide/architecture' }
     ],
-    
+
     sidebar: {
       '/guide/': [
         {
@@ -60,29 +60,59 @@ export default defineConfig({
           ]
         }
       ],
-      
+
       '/api/': [
         {
           text: 'API Reference',
           items: [
-            { text: 'Overview', link: '/api/' },
-            { text: 'Modules', link: '/api/modules' },
-            { text: 'Interfaces', link: '/api/interfaces' },
-            { text: 'Functions', link: '/api/functions' }
+            { text: 'Overview', link: '/api/index' },
+            {
+              text: 'Core',
+              items: [
+                { text: 'Mod Definition', link: '/api/Namespace.mod' },
+                { text: 'Configuration', link: '/api/Namespace.config' }
+              ]
+            },
+            {
+              text: 'Integration',
+              items: [
+                { text: 'RPC Bridge', link: '/api/Namespace.rpc' }
+              ]
+            },
+            {
+              text: 'Gameplay',
+              items: [
+                { text: 'Worldgen', link: '/api/Namespace.worldgen' }
+              ]
+            },
+            {
+              text: 'State & Environment',
+              items: [
+                { text: 'Reactive State', link: '/api/Interface.State' },
+                { text: 'Side Awareness', link: '/api/Namespace.env' }
+              ]
+            },
+            {
+              text: 'Utilities',
+              items: [
+                { text: 'Scheduler', link: '/api/Namespace.scheduler' },
+                { text: 'Runtime Logging', link: '/api/Namespace.runtime' }
+              ]
+            }
           ]
         }
       ]
     },
-    
+
     socialLinks: [
       { icon: 'github', link: 'https://github.com/your-org/tapestry' }
     ],
-    
+
     editLink: {
       pattern: 'https://github.com/your-org/tapestry/edit/main/docs-site/docs/:path',
       text: 'Edit this page on GitHub'
     },
-    
+
     search: {
       provider: 'local',
       options: {
