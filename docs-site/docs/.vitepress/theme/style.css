@@ -754,3 +754,59 @@ footer {
 .VPSwitchAppearance {
   display: none !important;
 }
+
+.VPNavBarAppearance {
+  display: none !important;
+}
+
+/* =================================
+   Custom Download Link in Navbar
+================================= */
+
+.VPNavBar .content {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.VPNavBar .content-body {
+  flex: 1 !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.download-link-container {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 1;
+}
+
+.download-link {
+  color: var(--text-secondary) !important;
+  text-decoration: none !important;
+  font-size: 0.9rem !important;
+  font-family: 'Inconsolata', monospace !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  transition: color 0.3s ease !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  white-space: nowrap !important;
+}
+
+.download-link:hover {
+  color: var(--accent-orange) !important;
+  background: transparent !important;
+  transform: none !important;
+}
+
+@media (max-width: 960px) {
+  .download-link-container {
+    display: none;
+  }
+}

@@ -16,8 +16,8 @@ hero:
       text: API
       link: /api/
     - theme: alt
-      text: GitHub
-      link: https://github.com/alizzycraft/tapestry
+      text: Mods
+      link: /mods/
 
 features:
   - title: Explicit Lifecycle Phases

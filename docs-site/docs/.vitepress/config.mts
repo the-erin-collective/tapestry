@@ -37,9 +37,9 @@ export default defineConfig({
     logo: '/logo.png',
 
     nav: [
-      { text: 'Guide', link: '/guide/getting-started' },
+      { text: 'Guides', link: '/guide/getting-started' },
       { text: 'API', link: '/api/' },
-      { text: 'Architecture', link: '/guide/architecture' }
+      { text: 'Mods', link: '/mods/' }
     ],
 
     sidebar: {
