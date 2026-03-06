@@ -10,13 +10,13 @@ hero:
     alt: Tapestry Banner
   actions:
     - theme: brand
-      text: Getting Started
+      text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: API Reference
+      text: API
       link: /api/
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/alizzycraft/tapestry
 
 features:
