@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "Tapestry"
-  text: "TypeScript-First Modding Framework for Minecraft"
+  text: "TypeScript Modding Framework for Minecraft"
   tagline: "A structured, type-safe modding platform that enforces lifecycle safety and brings predictable development to Minecraft mods."
   image:
     src: /banner.jpg
