@@ -618,7 +618,7 @@ footer {
 }
 
 .VPFeature .title {
-  background: linear-gradient(90deg, var(--accent-orange), var(--accent-cyan), var(--accent-green)) !important;
+  background: var(--accent-orange) !important;
   padding: 12px 16px !important;
   margin: 0 !important;
   font-family: 'Righteous', sans-serif !important;
@@ -626,9 +626,37 @@ footer {
   color: #1A1A1A !important;
   text-transform: uppercase !important;
   letter-spacing: 0.5px !important;
-  border-bottom: 3px solid var(--accent-orange) !important;
+  border-bottom: 3px solid rgba(0, 0, 0, 0.2) !important;
   width: 100% !important;
   box-sizing: border-box !important;
+}
+
+/* Individual card colors */
+.VPFeatures .item:nth-child(1) .VPFeature .title {
+  background: var(--accent-orange) !important;
+}
+
+.VPFeatures .item:nth-child(2) .VPFeature .title {
+  background: var(--accent-cyan) !important;
+  color: #f5f5f5 !important;
+}
+
+.VPFeatures .item:nth-child(3) .VPFeature .title {
+  background: var(--accent-green) !important;
+}
+
+.VPFeatures .item:nth-child(4) .VPFeature .title {
+  background: var(--accent-blue) !important;
+  color: #f5f5f5 !important;
+}
+
+.VPFeatures .item:nth-child(5) .VPFeature .title {
+  background: var(--accent-purple) !important;
+  color: #f5f5f5 !important;
+}
+
+.VPFeatures .item:nth-child(6) .VPFeature .title {
+  background: var(--accent-yellow) !important;
 }
 
 .VPFeature .details {
