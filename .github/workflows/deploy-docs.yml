@@ -2,10 +2,7 @@ name: Deploy Documentation
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'docs-site/**'
-      - '.github/workflows/deploy-docs.yml'
+    branches: [docs]
   workflow_dispatch:
 
 permissions:
@@ -35,13 +32,9 @@ jobs:
         working-directory: docs-site
         run: npm ci
         
-      - name: Generate TypeDoc API documentation
+      - name: Build documentation
         working-directory: docs-site
-        run: npm run gen-api
-        
-      - name: Build VitePress site
-        working-directory: docs-site
-        run: vitepress build docs
+        run: npm run docs:build
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
