@@ -1,44 +1,29 @@
-# Tapestry Mods
+---
+layout: doc
+aside: false
+editLink: false
+lastUpdated: false
+---
 
-Explore mods built with the Tapestry framework.
-
-## Featured Mods
-
-### Twila
-
-Twila is a comprehensive mod built on Tapestry that showcases the framework's capabilities.
-
-**Features:**
-- Advanced world generation enhancements
-- Custom biome integration
-- Server-side gameplay mechanics
-- Client-side UI overlays
-- Cross-platform compatibility
-
-**Status:** In Development
-
-**Requirements:**
-- Tapestry v0.3.0-alpha or later
-- Minecraft 1.20+
-- Fabric Loader
-
-**Installation:**
-
-1. Install Tapestry framework
-2. Download Twila from the releases page
-3. Place the mod JAR in your `mods` folder
-4. Launch Minecraft with Fabric
-
-**Documentation:**
-
-Coming soon - detailed guides on Twila's features and configuration options.
+<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2rem;">
+  <h1 class="tapestry-mods-title" style="margin: 0;">Tapestry Mods</h1>
+  <p class="tapestry-mods-desc" style="margin: 0;">Explore mods built with the Tapestry framework.</p>
+  <div class="tapestry-mods-search" style="margin: 0;"> </div>
+</div>
 
 ---
 
-## Building Your Own Mod
-
-Ready to create your own Tapestry mod? Check out our [Getting Started Guide](/guide/getting-started) to learn how to build type-safe, structured mods with TypeScript.
-
-## Community Mods
-
-Have you built a mod with Tapestry? Let us know on [GitHub](https://github.com/alizzycraft/tapestry) and we'll feature it here!
+<div style="display: flex; align-items: center; gap: 2rem; margin: 2rem 0; padding: 1.5rem; border: 1px solid var(--vp-c-divider); border-radius: 8px;">
+  <div style="flex: 1;">
+    <h2 style="margin-top: 0; color: var(--vp-c-accent-1);">TWILA</h2>
+    <h3 style="margin-top: 0.5rem; font-weight: normal; color: var(--vp-c-text-2);">That's What I'm Looking At</h3>
+    <p>A client-side block and entity identification overlay mod for the Tapestry platform.</p>
+    <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+      <a href="https://alizzycraft.github.io/TWILA/" target="_self" style="display: inline-block; padding: 0.5rem 1.5rem; background: var(--vp-c-brand-2); color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">more info</a>
+      <a href="https://github.com/alizzycraft/twila/releases/latest" target="_blank" style="display: inline-block; padding: 0.5rem 1.5rem; background: #35495e; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">download</a>
+    </div>
+  </div>
+  <div style="flex: 0 0 400px;">
+    <img src="https://alizzycraft.github.io/TWILA/banner.jpg" alt="TWILA Screenshot" style="width: 100%; border-radius: 4px; border: 2px solid var(--vp-c-divider);" />
+  </div>
+</div>

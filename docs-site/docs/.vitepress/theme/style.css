@@ -747,3 +747,54 @@ footer {
 .VPNavBarAppearance {
   display: none !important;
 }
+
+/* =================================
+   Mods Page - Wider Content
+================================= */
+
+/* Make mods page much wider */
+.VPDoc:not(.has-aside) .container {
+  max-width: 1600px !important;
+}
+
+.VPDoc:not(.has-aside) .content {
+  max-width: 1600px !important;
+  padding-left: 64px !important;
+  padding-right: 64px !important;
+}
+
+/* Hide the footer on mods page */
+.VPDocFooter {
+  display: none !important;
+}
+
+.vp-doc {
+  padding: 0px !important;
+}
+
+#tapestry-mods {
+  margin-top: -20px !important;
+}
+
+.tapestry-mods-title{
+  background: linear-gradient(90deg,
+      var(--accent-orange) 0%,
+      var(--accent-yellow) 20%,
+      var(--accent-green) 40%,
+      var(--accent-cyan) 60%,
+      var(--accent-blue) 80%,
+      var(--accent-purple) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: none !important;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.3);
+}
+
+.tapestry-mods-desc{
+  font-weight: bold;
+}
+
+.tapestry-mods-search {
+  width: 300px !important;
+}
