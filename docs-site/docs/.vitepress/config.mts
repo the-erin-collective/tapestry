@@ -29,11 +29,7 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/tapestry/favicon.svg' }],
     ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/tapestry/favicon-32x32.png' }],
     ['link', { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/tapestry/favicon-16x16.png' }],
-    ['link', { rel: 'shortcut icon', href: '/tapestry/favicon.ico' }],
-    // Prevent bfcache by disabling caching
-    ['meta', { 'http-equiv': 'Cache-Control', content: 'no-cache, no-store, must-revalidate' }],
-    ['meta', { 'http-equiv': 'Pragma', content: 'no-cache' }],
-    ['meta', { 'http-equiv': 'Expires', content: '0' }]
+    ['link', { rel: 'shortcut icon', href: '/tapestry/favicon.ico' }]
   ],
 
   themeConfig: {
