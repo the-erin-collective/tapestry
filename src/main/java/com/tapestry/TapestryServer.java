@@ -1,7 +1,12 @@
 package com.tapestry;
 
+import com.tapestry.gameplay.GameplayAPI;
+import com.tapestry.gameplay.patch.ModLoadOrder;
+import com.tapestry.gameplay.patch.PatchPlan;
+import com.tapestry.gameplay.patch.PatchRegistry;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -71,6 +76,9 @@ public class TapestryServer implements ModInitializer {
         // Initialize Phase 16 RPC system
         initializeRpcSystem();
         
+        // Register debug commands
+        registerDebugCommands();
+        
         // Register server lifecycle events for additional server-specific handling
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             LOGGER.info("Server starting - performing server-specific setup");
@@ -89,6 +97,33 @@ public class TapestryServer implements ModInitializer {
         registerServerEventHandlers();
         
         LOGGER.info("Server components initialized");
+    }
+    
+    /**
+     * Registers debug commands with the command system.
+     * 
+     * <p>This method registers the {@code /tapestry patches <target_id>} command
+     * for debugging patch operations. The command is available in both development
+     * and production environments.</p>
+     */
+    private void registerDebugCommands() {
+        LOGGER.info("Registering debug commands");
+        
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            // Create a minimal PatchRegistry and PatchPlan for the debug command
+            // In a full implementation, this would be provided by the patch system
+            PatchRegistry registry = new PatchRegistry();
+            registry.freeze();
+            
+            ModLoadOrder modLoadOrder = (modA, modB) -> modA.compareTo(modB);
+            PatchPlan patchPlan = PatchPlan.compile(registry, modLoadOrder);
+            
+            // Create GameplayAPI instance and register commands
+            GameplayAPI gameplayAPI = new GameplayAPI();
+            gameplayAPI.registerCommands(dispatcher, registryAccess, environment, patchPlan);
+            
+            LOGGER.info("Debug commands registered successfully");
+        });
     }
     
     /**

@@ -77,6 +77,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.HashMap;
+import java.util.Collections;
+
+import com.tapestry.gameplay.patch.PatchLifecycleManager;
+import com.tapestry.gameplay.patch.DefaultPatchContext;
 
 import com.tapestry.extensions.Version;
 
@@ -112,6 +116,7 @@ public class TapestryMod implements ModInitializer {
     private static RpcPacketHandler rpcPacketHandler;
     private static RpcClientRuntime rpcClientRuntime;
     private static WatchRegistry watchRegistry;
+    private static com.tapestry.gameplay.patch.PatchPlan compiledPatchPlan;
     
     // Flag to track if client presentation has been initialized
     private static volatile boolean clientPresentationInitialized = false;
@@ -571,6 +576,9 @@ public class TapestryMod implements ModInitializer {
             modRegistry.completeDiscovery();
             
             LOGGER.info("TypeScript capability registration complete");
+
+            // patch engine lifecycle: freeze registry, compile plan and bootstrap apply
+            PatchLifecycleManager.initialize(new DefaultPatchContext(), Collections.emptyMap());
         
         // Build activation order after all mods are registered
         ModRegistry modRegistry = ModRegistry.getInstance();

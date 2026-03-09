@@ -1,10 +1,16 @@
 package com.tapestry.gameplay;
 
+import com.mojang.brigadier.CommandDispatcher;
 import com.tapestry.gameplay.brewing.BrewingRecipe;
 import com.tapestry.gameplay.composition.CompositionOrchestrator;
 import com.tapestry.gameplay.items.ItemRegistration;
 import com.tapestry.gameplay.loot.LootModifier;
+import com.tapestry.gameplay.patch.PatchPlan;
+import com.tapestry.gameplay.patch.debug.PatchDebugCommandRegistrar;
 import com.tapestry.gameplay.traits.TraitSystem;
+import net.minecraft.command.CommandRegistryAccess;
+import net.minecraft.server.command.CommandManager;
+import net.minecraft.server.command.ServerCommandSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -144,5 +150,32 @@ public class GameplayAPI {
         );
         
         LOGGER.info("INITIALIZATION phase completed successfully");
+    }
+    
+    /**
+     * Registers debug commands with the command dispatcher.
+     * 
+     * <p>This method should be called during server initialization to register
+     * the {@code /tapestry patches <target_id>} command. The command is available
+     * in both development and production environments.</p>
+     * 
+     * @param dispatcher The command dispatcher to register with
+     * @param registryAccess The command registry access
+     * @param environment The command environment
+     * @param patchPlan The compiled patch plan to inspect
+     * @throws NullPointerException if any parameter is null
+     */
+    public void registerCommands(
+            CommandDispatcher<ServerCommandSource> dispatcher,
+            CommandRegistryAccess registryAccess,
+            CommandManager.RegistrationEnvironment environment,
+            PatchPlan patchPlan) {
+        
+        LOGGER.info("Registering gameplay debug commands");
+        
+        // Register the patch debug command
+        PatchDebugCommandRegistrar.register(dispatcher, registryAccess, environment, patchPlan);
+        
+        LOGGER.info("Gameplay debug commands registered successfully");
     }
 }
