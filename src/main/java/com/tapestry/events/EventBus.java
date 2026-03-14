@@ -28,6 +28,10 @@ public class EventBus {
     // Event storage: eventName -> set of listeners
     private final Map<String, Set<Listener>> eventListeners = new ConcurrentHashMap<>();
     
+    // Queue for deferred event dispatch (Phase 3 optimization)
+    private final LinkedList<TapestryEvent> eventQueue = new LinkedList<>();
+    private int maxQueueSize = 10_000; // default limit
+    
     // Mod tracking: modId -> set of subscribed event names (for lifecycle cleanup)
     private final Map<String, Set<String>> modSubscriptions = new ConcurrentHashMap<>();
     
@@ -127,7 +131,8 @@ public class EventBus {
     
     /**
      * Emits an event with namespace validation.
-     * 
+     * Events are queued and dispatched later (typically once per tick).
+     *
      * @param emitterModId the mod ID emitting the event
      * @param eventName the event name to emit
      * @param payload the event payload data
@@ -136,56 +141,17 @@ public class EventBus {
     public void emit(String emitterModId, String eventName, Object payload) {
         validateNamespace(emitterModId, eventName, "emit");
         
-        // Notify StateCoordinator of dispatch start
-        stateCoordinator.onDispatchStart();
-        
-        try {
-            Set<Listener> listeners = eventListeners.get(eventName);
-            if (listeners == null || listeners.isEmpty()) {
-                // No listeners - this is valid per spec (allows future-proof decoupling)
-                return;
+        // Create event object and queue for later dispatch
+        TapestryEvent event = new TapestryEvent(eventName, extractNamespace(eventName), payload, emitterModId);
+        synchronized (eventQueue) {
+            if (eventQueue.size() >= maxQueueSize) {
+                eventQueue.removeFirst();
+                LOGGER.warn("Event queue overflow (limit {}). Dropping oldest event.", maxQueueSize);
             }
-            
-            // Create event object
-            TapestryEvent event = new TapestryEvent(eventName, extractNamespace(eventName), payload, emitterModId);
-            
-            // Increment dispatch depth for recursion warning
-            int currentDepth = dispatchDepth.get();
-            int newDepth = currentDepth + 1;
-            dispatchDepth.set(newDepth);
-            
-            // Log recursion warning when entering deep recursion (once per chain)
-            if (newDepth == WARN_DISPATCH_DEPTH + 1) {
-                LOGGER.warn("Deep event dispatch detected: depth {} for event '{}'", 
-                           newDepth, eventName);
-            }
-            
-            try {
-                // Snapshot listeners to prevent ConcurrentModificationException
-                // This preserves determinism even if listeners modify the set during dispatch
-                List<Listener> listenersSnapshot = new ArrayList<>(listeners);
-                
-                // Execute listeners in registration order
-                for (Listener listener : listenersSnapshot) {
-                    try {
-                        listener.handler.executeVoid(event);
-                    } catch (Exception e) {
-                        LOGGER.error("Event handler error for mod '{}' on event '{}': {}", 
-                                   listener.modId, eventName, e.getMessage(), e);
-                        // Continue dispatching remaining listeners
-                    }
-                }
-            } finally {
-                // Decrement dispatch depth
-                dispatchDepth.set(currentDepth);
-            }
-        } finally {
-            // Notify StateCoordinator of dispatch end (triggers flush if needed)
-            stateCoordinator.onDispatchEnd();
+            eventQueue.addLast(event);
         }
         
-        LOGGER.debug("Event '{}' emitted by '{}' to {} listeners", eventName, emitterModId, 
-                   eventListeners.getOrDefault(eventName, Collections.emptySet()).size());
+        LOGGER.debug("Event '{}' queued by '{}' (queue size now {})", eventName, emitterModId, getQueueSize());
     }
     
     /**
@@ -292,6 +258,73 @@ public class EventBus {
      */
     public int getDispatchDepth() {
         return dispatchDepth.get();
+    }
+    
+    /**
+     * Returns the current number of events waiting in the queue.
+     */
+    public int getQueueSize() {
+        synchronized (eventQueue) {
+            return eventQueue.size();
+        }
+    }
+    
+    /**
+     * Adjusts the maximum allowed queue size. Events overflow by dropping oldest.
+     */
+    public void setMaxQueueSize(int size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("maxQueueSize must be positive");
+        }
+        this.maxQueueSize = size;
+    }
+    
+    /**
+     * Dispatches all queued events in FIFO order. Called from engine tick.
+     */
+    public void dispatchQueued() {
+        List<TapestryEvent> toDispatch;
+        synchronized (eventQueue) {
+            if (eventQueue.isEmpty()) return;
+            toDispatch = new ArrayList<>(eventQueue);
+            eventQueue.clear();
+        }
+        for (TapestryEvent ev : toDispatch) {
+            dispatchDirect(ev);
+        }
+    }
+    
+    /**
+     * Immediately dispatches a single event bypassing the queue.
+     */
+    private void dispatchDirect(TapestryEvent event) {
+        stateCoordinator.onDispatchStart();
+        try {
+            Set<Listener> listeners = eventListeners.get(event.getName());
+            if (listeners == null || listeners.isEmpty()) {
+                return;
+            }
+            int currentDepth = dispatchDepth.get();
+            int newDepth = currentDepth + 1;
+            dispatchDepth.set(newDepth);
+            if (newDepth == WARN_DISPATCH_DEPTH + 1) {
+                LOGGER.warn("Deep event dispatch detected: depth {} for event '{}'", newDepth, event.getName());
+            }
+            try {
+                List<Listener> snapshot = new ArrayList<>(listeners);
+                for (Listener listener : snapshot) {
+                    try {
+                        listener.handler.executeVoid(event);
+                    } catch (Exception e) {
+                        LOGGER.error("Event handler error for mod '{}' on event '{}': {}", listener.modId, event.getName(), e.getMessage(), e);
+                    }
+                }
+            } finally {
+                dispatchDepth.set(currentDepth);
+            }
+        } finally {
+            stateCoordinator.onDispatchEnd();
+        }
     }
     
     /**

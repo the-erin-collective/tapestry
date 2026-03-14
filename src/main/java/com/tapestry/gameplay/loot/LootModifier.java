@@ -19,7 +19,22 @@ import java.util.function.Consumer;
 public class LootModifier {
     private static final Logger LOGGER = LoggerFactory.getLogger(LootModifier.class);
     
+    // Global instance for TypeScript API access
+    private static LootModifier instance;
+    
     private final List<LootModification> modifications = new ArrayList<>();
+    
+    /**
+     * Gets the global LootModifier instance.
+     * 
+     * @return the global instance
+     */
+    public static synchronized LootModifier getInstance() {
+        if (instance == null) {
+            instance = new LootModifier();
+        }
+        return instance;
+    }
     
     /**
      * Registers a loot table modification.

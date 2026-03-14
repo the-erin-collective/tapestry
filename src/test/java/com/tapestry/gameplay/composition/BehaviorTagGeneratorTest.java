@@ -3,6 +3,7 @@ package com.tapestry.gameplay.composition;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.tapestry.behavior.VanillaTagMergeRegistry;
 import com.tapestry.gameplay.items.ItemOptions;
 import com.tapestry.gameplay.items.ItemRegistration;
 import com.tapestry.gameplay.traits.TraitConfig;
@@ -112,6 +113,10 @@ class BehaviorTagGeneratorTest {
         // Values should be sorted
         assertTrue(values.toString().contains("test:cod"));
         assertTrue(values.toString().contains("test:nori"));
+
+        // generation should also register a merge entry for this tag
+        String vanilla = VanillaTagMergeRegistry.getMerges().get("tapestry:fish_items");
+        assertEquals("minecraft:fish", vanilla);
     }
     
     @Test
@@ -207,6 +212,34 @@ class BehaviorTagGeneratorTest {
         assertEquals("z:item", values.get(2).getAsString());
     }
     
+    @Test
+    void testGenerateTagsWithInheritance() throws IOException {
+        // Parent and child trait setup
+        traitSystem.register("food", new TraitConfig("tapestry:food_items"));
+        traitSystem.register("fish_food", new TraitConfig("tapestry:fish_items", "food"));
+        
+        // Item only declares the child trait
+        itemRegistration.register("test:nori", new ItemOptions().traits("fish_food"));
+        
+        // Resolve to propagate items
+        resolver.resolve();
+        
+        // Generate tags
+        int tagCount = generator.generateTags();
+        assertEquals(2, tagCount);
+        
+        // Both files should exist
+        assertTrue(Files.exists(tempDir.resolve("food_items.json")));
+        assertTrue(Files.exists(tempDir.resolve("fish_items.json")));
+        
+        // Parent file must list the child item
+        String parentJsonStr = Files.readString(tempDir.resolve("food_items.json"));
+        JsonArray parentValues = JsonParser.parseString(parentJsonStr)
+            .getAsJsonObject().getAsJsonArray("values");
+        assertEquals(1, parentValues.size());
+        assertEquals("test:nori", parentValues.get(0).getAsString());
+    }
+
     @Test
     void testDefaultTagNameGeneration() throws IOException {
         // Register trait without explicit tag (should use default pattern)

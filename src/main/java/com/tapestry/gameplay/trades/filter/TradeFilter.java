@@ -20,25 +20,40 @@ import java.util.function.Predicate;
  * Supported criteria:
  * <ul>
  *   <li>{@code inputItem} - The item identifier for the trade's input item</li>
+ *   <li>{@code inputCount} - The count for the trade's input item</li>
  *   <li>{@code inputTag} - The tag identifier for the trade's input item</li>
+ *   <li>{@code inputItem2} - The item identifier for the trade's secondary input item</li>
+ *   <li>{@code inputCount2} - The count for the trade's secondary input item</li>
+ *   <li>{@code inputTag2} - The tag identifier for the trade's secondary input item</li>
  *   <li>{@code outputItem} - The item identifier for the trade's output item</li>
+ *   <li>{@code outputCount} - The count for the trade's output item</li>
  *   <li>{@code outputTag} - The tag identifier for the trade's output item</li>
  *   <li>{@code level} - The villager level required for this trade</li>
  *   <li>{@code maxUses} - The maximum number of times this trade can be used</li>
  * </ul>
  * </p>
  * 
- * @param inputItem Optional item identifier for the trade's input
- * @param inputTag Optional tag identifier for the trade's input
+ * @param inputItem Optional item identifier for the trade's primary input
+ * @param inputCount Optional count for the trade's primary input
+ * @param inputTag Optional tag identifier for the trade's primary input
+ * @param inputItem2 Optional item identifier for the trade's secondary input
+ * @param inputCount2 Optional count for the trade's secondary input
+ * @param inputTag2 Optional tag identifier for the trade's secondary input
  * @param outputItem Optional item identifier for the trade's output
+ * @param outputCount Optional count for the trade's output
  * @param outputTag Optional tag identifier for the trade's output
  * @param level Optional villager level for the trade
  * @param maxUses Optional maximum uses for the trade
  */
 public record TradeFilter(
     Optional<Identifier> inputItem,
+    Optional<Integer> inputCount,
     Optional<String> inputTag,
+    Optional<Identifier> inputItem2,
+    Optional<Integer> inputCount2,
+    Optional<String> inputTag2,
     Optional<Identifier> outputItem,
+    Optional<Integer> outputCount,
     Optional<String> outputTag,
     Optional<Integer> level,
     Optional<Integer> maxUses
@@ -49,8 +64,13 @@ public record TradeFilter(
      */
     public TradeFilter {
         if (inputItem == null) inputItem = Optional.empty();
+        if (inputCount == null) inputCount = Optional.empty();
         if (inputTag == null) inputTag = Optional.empty();
+        if (inputItem2 == null) inputItem2 = Optional.empty();
+        if (inputCount2 == null) inputCount2 = Optional.empty();
+        if (inputTag2 == null) inputTag2 = Optional.empty();
         if (outputItem == null) outputItem = Optional.empty();
+        if (outputCount == null) outputCount = Optional.empty();
         if (outputTag == null) outputTag = Optional.empty();
         if (level == null) level = Optional.empty();
         if (maxUses == null) maxUses = Optional.empty();
@@ -68,21 +88,50 @@ public record TradeFilter(
     @Override
     public Predicate<TradeEntry> toPredicate() {
         return entry -> {
-            // Check input item criterion
+            // Check primary input item criterion
             if (inputItem.isPresent() && 
                 !entry.getInputItem().equals(inputItem.get())) {
                 return false;
             }
             
-            // Check input tag criterion
+            // Check primary input count criterion
+            if (inputCount.isPresent() && entry.getInputCount() != inputCount.get()) {
+                return false;
+            }
+            
+            // Check primary input tag criterion
             if (inputTag.isPresent() && 
                 !entry.hasInputTag(inputTag.get())) {
                 return false;
             }
             
-            // Check output item criterion
+            // Check secondary input item criterion
+            if (inputItem2.isPresent()) {
+                Identifier secondaryInput = entry.getInputItem2();
+                if (secondaryInput == null || !secondaryInput.equals(inputItem2.get())) {
+                    return false;
+                }
+            }
+            
+            // Check secondary input count criterion
+            if (inputCount2.isPresent() && entry.getInputCount2() != inputCount2.get()) {
+                return false;
+            }
+            
+            // Check secondary input tag criterion
+            if (inputTag2.isPresent() && 
+                !entry.hasInputTag2(inputTag2.get())) {
+                return false;
+            }
+            
+            // Check primary output item criterion
             if (outputItem.isPresent() && 
                 !entry.getOutputItem().equals(outputItem.get())) {
+                return false;
+            }
+            
+            // Check output count criterion
+            if (outputCount.isPresent() && entry.getOutputCount() != outputCount.get()) {
                 return false;
             }
             
@@ -116,6 +165,7 @@ public record TradeFilter(
      *   <li>Tag identifiers are valid (non-empty strings)</li>
      *   <li>Level values are positive</li>
      *   <li>MaxUses values are positive</li>
+     *   <li>Count values are positive</li>
      * </ul>
      * </p>
      * 
@@ -124,11 +174,19 @@ public record TradeFilter(
     @Override
     public void validate() throws FilterValidationException {
         // Basic syntactic checks that don't require a context
-        // Validate input tag identifier
+        // Validate primary input tag identifier
         if (inputTag.isPresent() && 
             (inputTag.get() == null || inputTag.get().trim().isEmpty())) {
             throw new FilterValidationException(
                 "Input tag cannot be null or empty"
+            );
+        }
+        
+        // Validate secondary input tag identifier
+        if (inputTag2.isPresent() && 
+            (inputTag2.get() == null || inputTag2.get().trim().isEmpty())) {
+            throw new FilterValidationException(
+                "Secondary input tag cannot be null or empty"
             );
         }
         
@@ -137,6 +195,27 @@ public record TradeFilter(
             (outputTag.get() == null || outputTag.get().trim().isEmpty())) {
             throw new FilterValidationException(
                 "Output tag cannot be null or empty"
+            );
+        }
+        
+        // Validate input count
+        if (inputCount.isPresent() && inputCount.get() <= 0) {
+            throw new FilterValidationException(
+                "Input count must be positive, got: " + inputCount.get()
+            );
+        }
+        
+        // Validate secondary input count
+        if (inputCount2.isPresent() && inputCount2.get() <= 0) {
+            throw new FilterValidationException(
+                "Secondary input count must be positive, got: " + inputCount2.get()
+            );
+        }
+        
+        // Validate output count
+        if (outputCount.isPresent() && outputCount.get() <= 0) {
+            throw new FilterValidationException(
+                "Output count must be positive, got: " + outputCount.get()
             );
         }
         
@@ -164,6 +243,9 @@ public record TradeFilter(
         if (inputItem.isPresent() && !context.registryContains(inputItem.get())) {
             throw new FilterValidationException("Unknown input item: " + inputItem.get());
         }
+        if (inputItem2.isPresent() && !context.registryContains(inputItem2.get())) {
+            throw new FilterValidationException("Unknown secondary input item: " + inputItem2.get());
+        }
         if (outputItem.isPresent() && !context.registryContains(outputItem.get())) {
             throw new FilterValidationException("Unknown output item: " + outputItem.get());
         }
@@ -176,8 +258,13 @@ public record TradeFilter(
      * and values of appropriate types:
      * <ul>
      *   <li>"inputItem" or "input" - String (converted to Identifier)</li>
+     *   <li>"inputCount" - Integer</li>
      *   <li>"inputTag" - String</li>
+     *   <li>"inputItem2" - String (converted to Identifier)</li>
+     *   <li>"inputCount2" - Integer</li>
+     *   <li>"inputTag2" - String</li>
      *   <li>"outputItem" or "output" - String (converted to Identifier)</li>
+     *   <li>"outputCount" - Integer</li>
      *   <li>"outputTag" - String</li>
      *   <li>"level" - Integer</li>
      *   <li>"maxUses" - Integer</li>
@@ -195,8 +282,13 @@ public record TradeFilter(
         
         return new TradeFilter(
             extractIdentifier(spec, "inputItem", "input"),
+            extractInteger(spec, "inputCount"),
             extractString(spec, "inputTag"),
+            extractIdentifier(spec, "inputItem2"),
+            extractInteger(spec, "inputCount2"),
+            extractString(spec, "inputTag2"),
             extractIdentifier(spec, "outputItem", "output"),
+            extractInteger(spec, "outputCount"),
             extractString(spec, "outputTag"),
             extractInteger(spec, "level"),
             extractInteger(spec, "maxUses")

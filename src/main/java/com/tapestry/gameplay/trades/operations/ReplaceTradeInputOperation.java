@@ -3,6 +3,7 @@ package com.tapestry.gameplay.trades.operations;
 import com.tapestry.gameplay.patch.PatchOperation;
 import com.tapestry.gameplay.patch.PatchContext;
 import com.tapestry.gameplay.trades.TradeTable;
+import com.tapestry.gameplay.trades.expansion.TagTradeExpander;
 import com.tapestry.gameplay.trades.filter.TradeFilter;
 import net.minecraft.util.Identifier;
 
@@ -14,6 +15,9 @@ import java.util.Optional;
  * 
  * <p>This operation uses a {@link TradeFilter} to identify which trades should be modified,
  * then replaces the input item in all matching trades with the specified new input item.</p>
+ * 
+ * <p>If the new input is a tag identifier (starts with "#"), the operation will expand
+ * the tag into individual trades for each item in the tag using {@link TagTradeExpander}.</p>
  * 
  * <p>This operation is stateless and deterministic - applying the same filter and replacement
  * to the same trade table will always produce the same result.</p>
@@ -38,6 +42,7 @@ import java.util.Optional;
  * @see PatchOperation
  * @see TradeTable
  * @see TradeFilter
+ * @see TagTradeExpander
  */
 public record ReplaceTradeInputOperation(
     TradeFilter filter,
@@ -57,15 +62,28 @@ public record ReplaceTradeInputOperation(
     /**
      * Applies this operation by replacing the input item in all trades matching the filter.
      * 
+     * <p>If the new input is a tag identifier (starts with "#"), delegates to TagTradeExpander
+     * to expand the tag into individual trades. Otherwise, performs a simple replacement.</p>
+     * 
      * @param target The trade table to modify
      * @throws NullPointerException if target is null
      */
     @Override
     public void apply(TradeTable target) {
         Objects.requireNonNull(target, "Trade table cannot be null");
-        target.stream()
-            .filter(filter.toPredicate())
-            .forEach(entry -> entry.setInputItem(newInput));
+        
+        // Check if newInput is a tag identifier
+        if (newInput.toString().startsWith("#")) {
+            // Tag expansion: find matching trades and expand each one
+            target.stream()
+                .filter(filter.toPredicate())
+                .forEach(entry -> TagTradeExpander.expandInputTag(target, entry, newInput.toString()));
+        } else {
+            // Simple replacement: replace input item in matching trades
+            target.stream()
+                .filter(filter.toPredicate())
+                .forEach(entry -> entry.setInputItem(newInput));
+        }
     }
     
     /**
@@ -76,7 +94,10 @@ public record ReplaceTradeInputOperation(
     @Override
     public void validate(PatchContext context) throws Exception {
         filter.validate(context);
-        if (!context.registryContains(newInput)) {
+        
+        // If it's a tag, we don't validate it exists (tags are resolved at runtime)
+        // If it's an item, validate it exists
+        if (!newInput.toString().startsWith("#") && !context.registryContains(newInput)) {
             throw new IllegalArgumentException("Unknown new input item: " + newInput);
         }
     }

@@ -14,6 +14,21 @@
 export type Identifier = string;
 
 /**
+ * Represents an item with a quantity in a trade.
+ * 
+ * @example
+ * ```typescript
+ * const tradeItem: TradeItem = { item: "minecraft:emerald", count: 1 };
+ * ```
+ */
+export interface TradeItem {
+  /** The item identifier */
+  item: Identifier;
+  /** The quantity (default: 1 if not specified) */
+  count?: number;
+}
+
+/**
  * Priority constants for controlling patch application order.
  * Lower values are applied first.
  */
@@ -39,12 +54,22 @@ export interface TradeFilterSpec {
   inputItem?: Identifier;
   /** Alias for inputItem */
   input?: Identifier;
+  /** The quantity of the trade's primary input item */
+  inputCount?: number;
   /** The tag identifier for the trade's input item (e.g., "#minecraft:logs") */
   inputTag?: string;
+  /** The item identifier for the trade's optional secondary input item */
+  inputItem2?: Identifier;
+  /** The quantity of the trade's secondary input item */
+  inputCount2?: number;
+  /** The tag identifier for the trade's secondary input item */
+  inputTag2?: string;
   /** The item identifier for the trade's output item */
   outputItem?: Identifier;
   /** Alias for outputItem */
   output?: Identifier;
+  /** The quantity of the trade's output item */
+  outputCount?: number;
   /** The tag identifier for the trade's output item */
   outputTag?: string;
   /** The villager level required for this trade (1-5) */
@@ -55,20 +80,47 @@ export interface TradeFilterSpec {
 
 /**
  * Specification for creating a new trade.
+ * 
+ * @example
+ * ```typescript
+ * // Simple trade
+ * {
+ *   buy: "minecraft:emerald",
+ *   sell: "minecraft:cod",
+ *   level: 1
+ * }
+ * 
+ * // Trade with quantities
+ * {
+ *   buy: { item: "minecraft:emerald", count: 1 },
+ *   sell: { item: "minecraft:cod", count: 6 },
+ *   level: 1
+ * }
+ * 
+ * // Trade with secondary input
+ * {
+ *   buy: { item: "minecraft:paper", count: 14 },
+ *   buy2: { item: "minecraft:emerald", count: 1 },
+ *   sell: { item: "minecraft:map", count: 1 },
+ *   level: 3
+ * }
+ * ```
  */
 export interface TradeSpec {
-  /** The input item identifier */
-  input: Identifier;
-  /** The output item identifier */
-  output: Identifier;
+  /** The primary input item identifier or TradeItem object */
+  buy: Identifier | TradeItem;
+  /** Optional: The optional secondary input item identifier or TradeItem object */
+  buy2?: Identifier | TradeItem;
+  /** The output item identifier or TradeItem object */
+  sell: Identifier | TradeItem;
   /** The villager level for this trade (1-5) */
   level: number;
   /** Optional: The maximum number of times this trade can be used */
   maxUses?: number;
-  /** Optional: The input item count */
-  inputCount?: number;
-  /** Optional: The output item count */
-  outputCount?: number;
+  /** Optional: Experience reward for the villager */
+  experience?: number;
+  /** Optional: Price multiplier for demand/restock calculations */
+  priceMultiplier?: number;
 }
 
 /**
@@ -81,19 +133,33 @@ export interface TradeSpec {
  * ```typescript
  * gameplay.trades.modify("minecraft:villager/fisherman", (trades) => {
  *   // Remove all cod trades at level 1
- *   trades.remove({ input: "minecraft:cod", level: 1 });
+ *   trades.remove({ buy: "minecraft:cod", level: 1 });
  *   
  *   // Replace cod with salmon in all trades
  *   trades.replaceInput(
- *     { input: "minecraft:cod" },
+ *     { buy: "minecraft:cod" },
  *     "minecraft:salmon"
  *   );
  *   
- *   // Add a new trade
+ *   // Expand a tag into individual trades
+ *   trades.replaceInput(
+ *     { buy: "minecraft:cod" },
+ *     "#tapestry:fish_items"
+ *   );
+ *   
+ *   // Add a new trade with quantities
  *   trades.add({
- *     input: "minecraft:nautilus_shell",
- *     output: "minecraft:emerald",
+ *     buy: { item: "minecraft:emerald", count: 1 },
+ *     sell: { item: "minecraft:nautilus_shell", count: 1 },
  *     level: 2
+ *   });
+ *   
+ *   // Add a trade with secondary input
+ *   trades.add({
+ *     buy: { item: "minecraft:paper", count: 14 },
+ *     buy2: { item: "minecraft:emerald", count: 1 },
+ *     sell: { item: "minecraft:map", count: 1 },
+ *     level: 3
  *   });
  * });
  * ```
@@ -111,40 +177,54 @@ export interface TradeModificationBuilder {
    * @example
    * ```typescript
    * // Remove all cod trades at level 1
-   * trades.remove({ input: "minecraft:cod", level: 1 });
+   * trades.remove({ buy: "minecraft:cod", level: 1 });
    * 
    * // Remove all trades with emerald output
-   * trades.remove({ output: "minecraft:emerald" });
+   * trades.remove({ sell: "minecraft:emerald" });
+   * 
+   * // Remove trades matching quantity
+   * trades.remove({ buy: "minecraft:cod", inputCount: 1 });
    * ```
    */
   remove(filterSpec: TradeFilterSpec): TradeModificationBuilder;
 
   /**
-   * Replaces the input item in trades matching the filter.
+   * Replaces the primary input item in trades matching the filter.
+   * 
+   * If the new input is a tag identifier (e.g., "#minecraft:fishes"), the operation
+   * will expand into individual trades for each item in the tag.
    * 
    * @param filterSpec The filter specification for targeting trades
-   * @param newInput The new input item identifier
+   * @param newInput The new input item identifier or tag identifier
    * @returns This builder for method chaining
    * 
    * @example
    * ```typescript
    * // Replace cod with salmon in all trades
    * trades.replaceInput(
-   *   { input: "minecraft:cod" },
+   *   { buy: "minecraft:cod" },
    *   "minecraft:salmon"
    * );
    * 
-   * // Replace all fish items with a tag
+   * // Expand tag into individual trades
    * trades.replaceInput(
-   *   { inputTag: "#minecraft:fishes" },
-   *   "minecraft:cooked_cod"
+   *   { buy: "minecraft:cod" },
+   *   "#tapestry:fish_items"
+   * );
+   * 
+   * // Replace with count preservation
+   * trades.replaceInput(
+   *   { buy: "minecraft:cod", inputCount: 1 },
+   *   "minecraft:salmon"
    * );
    * ```
    */
   replaceInput(filterSpec: TradeFilterSpec, newInput: Identifier): TradeModificationBuilder;
 
   /**
-   * Replaces the output item in trades matching the filter.
+   * Replaces the primary output item in trades matching the filter.
+   * 
+   * The output count is preserved if not matched by the filter.
    * 
    * @param filterSpec The filter specification for targeting trades
    * @param newOutput The new output item identifier
@@ -154,7 +234,13 @@ export interface TradeModificationBuilder {
    * ```typescript
    * // Replace emerald output with diamond
    * trades.replaceOutput(
-   *   { output: "minecraft:emerald" },
+   *   { sell: "minecraft:emerald" },
+   *   "minecraft:diamond"
+   * );
+   * 
+   * // Replace only specific quantities
+   * trades.replaceOutput(
+   *   { sell: "minecraft:emerald", outputCount: 1 },
    *   "minecraft:diamond"
    * );
    * ```
@@ -164,18 +250,31 @@ export interface TradeModificationBuilder {
   /**
    * Adds a new trade to the trade table.
    * 
-   * Note: This method is not yet fully implemented in the Java backend.
-   * 
    * @param tradeSpec The specification for the new trade
    * @returns This builder for method chaining
    * 
    * @example
    * ```typescript
+   * // Simple trade with default count of 1
    * trades.add({
-   *   input: "minecraft:nautilus_shell",
-   *   output: "minecraft:emerald",
-   *   level: 2,
-   *   maxUses: 12
+   *   buy: "minecraft:emerald",
+   *   sell: "minecraft:nautilus_shell",
+   *   level: 2
+   * });
+   * 
+   * // Trade with explicit quantities
+   * trades.add({
+   *   buy: { item: "minecraft:emerald", count: 1 },
+   *   sell: { item: "minecraft:cod", count: 6 },
+   *   level: 1
+   * });
+   * 
+   * // Trade with secondary input
+   * trades.add({
+   *   buy: { item: "minecraft:paper", count: 14 },
+   *   buy2: { item: "minecraft:emerald", count: 1 },
+   *   sell: { item: "minecraft:map", count: 1 },
+   *   level: 3
    * });
    * ```
    */
@@ -241,6 +340,47 @@ export interface LootEntrySpec {
   /** The quality modifier */
   quality?: number;
 }
+
+// -----------------------------------------------------------------------------
+// Trait system definitions
+// -----------------------------------------------------------------------------
+
+/**
+ * Configuration object passed when registering a new trait.
+ */
+export interface TraitConfig {
+  /** Custom Minecraft tag to map this trait to */
+  tag?: string;
+  /** Trait that this new trait extends for inheritance */
+  extendsTrait?: string;
+}
+
+/**
+ * Consumption configuration specifying which entity consumes a trait and for
+ * what behavior.
+ */
+export interface ConsumptionConfig {
+  /** The entity identifier (e.g. "minecraft:cat") */
+  entity: Identifier;
+  /** The behavior name (e.g. "food") */
+  behavior: string;
+}
+
+/**
+ * API surface exposed to TypeScript mods for interacting with the trait system.
+ */
+export interface TraitAPI {
+  /**
+   * Registers a new trait. Config is optional and may specify tag or extension.
+   */
+  register(name: Identifier, config?: TraitConfig): void;
+
+  /**
+   * Declares that a given entity consumes a particular trait for a behavior.
+   */
+  consume(name: Identifier, config: ConsumptionConfig): void;
+}
+
 
 /**
  * Builder interface for modifying loot tables.
@@ -366,8 +506,14 @@ export interface TradeAPI {
    * @example
    * ```typescript
    * gameplay.trades.modify("minecraft:villager/fisherman", (trades) => {
-   *   trades.remove({ input: "minecraft:cod", level: 1 });
-   *   trades.replaceInput({ input: "minecraft:cod" }, "minecraft:salmon");
+   *   // Remove cod trades
+   *   trades.remove({ buy: "minecraft:cod", level: 1 });
+   *   
+   *   // Replace with salmon
+   *   trades.replaceInput({ buy: "minecraft:cod" }, "minecraft:salmon");
+   *   
+   *   // Expand tag into individual trades
+   *   trades.replaceInput({ buy: "minecraft:cod" }, "#tapestry:fish_items");
    * });
    * ```
    */
@@ -392,7 +538,7 @@ export interface TradeAPI {
    * gameplay.trades.modify(
    *   "minecraft:villager/fisherman",
    *   (trades) => {
-   *     trades.remove({ input: "minecraft:cod" });
+   *     trades.remove({ buy: "minecraft:cod" });
    *   },
    *   PatchPriority.EARLY
    * );
@@ -466,6 +612,8 @@ export interface GameplayAPI {
   trades: TradeAPI;
   /** Loot modification API */
   loot: LootAPI;
+  /** Trait system API */
+  traits: TraitAPI;
 }
 
 /**

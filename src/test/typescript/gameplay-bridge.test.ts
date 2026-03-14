@@ -448,4 +448,51 @@ describe('Gameplay Bridge', () => {
       });
     });
   });
+
+  // -------------------------------------------------------------------------
+  // TraitAPI tests
+  // -------------------------------------------------------------------------
+  describe('TraitAPI Bridge', () => {
+    let mockTraitAPI: any;
+    let mockTraitConfig: any;
+    let mockConsumptionConfig: any;
+
+    beforeEach(() => {
+      mockTraitAPI = {
+        register: jest.fn(),
+        consume: jest.fn()
+      };
+      mockTraitConfig = jest.fn(function(tag?: string, parent?: string) {
+        this.tag = tag;
+        this.extendsTrait = parent;
+      });
+      mockConsumptionConfig = jest.fn(function(entity: string, behavior: string) {
+        this.entity = entity;
+        this.behavior = behavior;
+      });
+      mockJavaTypes['com.tapestry.gameplay.traits.TraitAPI'] = mockTraitAPI;
+      mockJavaTypes['com.tapestry.gameplay.traits.TraitConfig'] = mockTraitConfig;
+      mockJavaTypes['com.tapestry.gameplay.traits.ConsumptionConfig'] = mockConsumptionConfig;
+    });
+
+    it('should call Java register with no config', () => {
+      const gameplay = createGameplayAPI();
+      gameplay.traits.register('foo');
+      expect(mockTraitAPI.register).toHaveBeenCalledWith('foo', null);
+    });
+
+    it('should convert tag/extendsConfig correctly', () => {
+      const gameplay = createGameplayAPI();
+      gameplay.traits.register('foo', { tag: 'tapestry:foo', extendsTrait: 'bar' });
+      expect(mockTraitConfig).toHaveBeenCalledWith('tapestry:foo', 'bar');
+      expect(mockTraitAPI.register).toHaveBeenCalledWith('foo', expect.any(Object));
+    });
+
+    it('should call consume with proper conversion', () => {
+      const gameplay = createGameplayAPI();
+      gameplay.traits.consume('foo', { entity: 'minecraft:cat', behavior: 'food' });
+      expect(mockConsumptionConfig).toHaveBeenCalledWith('minecraft:cat', 'food');
+      expect(mockTraitAPI.consume).toHaveBeenCalledWith('foo', expect.any(Object));
+    });
+  });
 });

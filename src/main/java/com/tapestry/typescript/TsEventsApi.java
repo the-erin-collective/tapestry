@@ -39,6 +39,16 @@ public class TsEventsApi {
     public ProxyObject createNamespace() {
         Map<String, Object> events = new HashMap<>();
         
+        // monitoring helper: current queue size
+        events.put("getQueueSize", (ProxyExecutable) args -> {
+            if (args.length != 0) {
+                throw new IllegalArgumentException("events.getQueueSize takes no arguments");
+            }
+            com.tapestry.events.EventBus bus = com.tapestry.TapestryMod.getEventBus();
+            if (bus == null) return 0;
+            return bus.getQueueSize();
+        });
+        
         // Generic on function
         events.put("on", (ProxyExecutable) args -> {
             if (args.length != 2) {
@@ -268,6 +278,63 @@ public class TsEventsApi {
         });
         
         events.put("server", ProxyObject.fromMap(serverEvents));
+        
+        // Phase 1 - Gameplay events namespace
+        Map<String, Object> gameplayEvents = new HashMap<>();
+        
+        // Dimension change event
+        gameplayEvents.put("onPlayerChangedDimension", (ProxyExecutable) args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("events.onPlayerChangedDimension requires exactly 1 argument: (callback)");
+            }
+            
+            Value callback = args[0];
+            validateEventCallback(callback);
+            
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'playerChangedDimension' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
+            String source = getModSource(modId);
+            
+            eventBus.subscribe(modId, "playerChangedDimension", callback);
+            return null;
+        });
+        
+        // Entity death event
+        gameplayEvents.put("onEntityKilled", (ProxyExecutable) args -> {
+            if (args.length != 1) {
+                throw new IllegalArgumentException("events.onEntityKilled requires exactly 1 argument: (callback)");
+            }
+            
+            Value callback = args[0];
+            validateEventCallback(callback);
+            
+            // Enforce event registration only during ON_LOAD execution
+            TypeScriptRuntime.ExecutionContext context = TypeScriptRuntime.getCurrentContext();
+            if (context.mode() != TypeScriptRuntime.ExecutionContextMode.ON_LOAD) {
+                throw new IllegalStateException(
+                    String.format("Event registration only allowed during onLoad execution. " +
+                        "Tried to register 'entityKilled' from mod '%s' in mode '%s'", 
+                        context.modId(), context.mode())
+                );
+            }
+            
+            String modId = context.modId();
+            String source = getModSource(modId);
+            
+            eventBus.subscribe(modId, "entityKilled", callback);
+            return null;
+        });
+        
+        events.put("gameplay", ProxyObject.fromMap(gameplayEvents));
         
         return ProxyObject.fromMap(events);
     }

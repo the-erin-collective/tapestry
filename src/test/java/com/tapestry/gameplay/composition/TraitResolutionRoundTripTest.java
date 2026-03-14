@@ -145,6 +145,26 @@ class TraitResolutionRoundTripTest {
     }
     
     @Test
+    void testRoundTripWithInheritance() throws IOException {
+        // base/child traits
+        traitSystem.register("food", new TraitConfig("tapestry:food_items"));
+        traitSystem.register("fish_food", new TraitConfig("tapestry:fish_items", "food"));
+        
+        itemRegistration.register("test:nori", new ItemOptions().traits("fish_food"));
+        
+        // resolve and generate
+        resolver.resolve();
+        generator.generateTags();
+        
+        Map<String, Set<String>> parsed = parseBehaviorTags();
+        
+        // child tag should have item
+        assertRoundTripEquivalence("fish_food", Set.of("test:nori"), parsed);
+        // parent tag should also have item due to inheritance
+        assertRoundTripEquivalence("food", Set.of("test:nori"), parsed);
+    }
+    
+    @Test
     void testRoundTripConsistencyWithItemsHavingMultipleTraits() throws IOException {
         // Step 1: Register traits and items where items have multiple traits
         traitSystem.register("edible", new TraitConfig("tapestry:edible_items"));

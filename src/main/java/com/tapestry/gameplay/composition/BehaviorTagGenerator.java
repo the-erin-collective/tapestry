@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Set;
+import com.tapestry.behavior.VanillaTagMergeRegistry;
 
 /**
  * Generates Minecraft behavior tags from trait definitions during COMPOSITION phase.
@@ -29,6 +30,15 @@ public class BehaviorTagGenerator {
     
     private final TraitSystem traitSystem;
     private final Path outputDirectory;
+
+    // default mapping of tapestry tags -> vanilla tags for automatic merges
+    private static final Map<String, String> DEFAULT_MERGES = Map.of(
+        "tapestry:fish_items", "minecraft:fish",
+        "tapestry:cat_foods", "minecraft:cat_food",
+        "tapestry:axolotl_foods", "minecraft:axolotl_food",
+        "tapestry:cow_breeding_items", "minecraft:cow_food",
+        "tapestry:chicken_breeding_items", "minecraft:chicken_food"
+    );
     
     /**
      * Creates a new behavior tag generator.
@@ -93,6 +103,12 @@ public class BehaviorTagGenerator {
             
             generatedCount++;
             LOGGER.info("Generated tag '{}' with {} items", trait.getTag(), items.size());
+
+            // register a default merge for this tag if we know the vanilla target
+            String vanilla = DEFAULT_MERGES.get(trait.getTag());
+            if (vanilla != null) {
+                VanillaTagMergeRegistry.register(trait.getTag(), vanilla);
+            }
         }
         
         LOGGER.info("Behavior tag generation complete: {} tags generated", generatedCount);

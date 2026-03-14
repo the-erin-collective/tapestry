@@ -209,6 +209,16 @@ public class TypeScriptRuntime {
     }
     
     /**
+     * Executes a runnable on the server thread.
+     * This ensures thread safety for server-side operations.
+     * 
+     * @param task the task to execute on the server thread
+     */
+    public static void runOnServerThread(Runnable task) {
+        com.tapestry.ServerContext.getCurrentServer().execute(task);
+    }
+    
+    /**
      * Starts the queue processor if not already running.
      * Also initializes the JavaScript context on the correct thread.
      */
@@ -741,6 +751,24 @@ public class TypeScriptRuntime {
         TsStateApi stateApi = new TsStateApi(stateService);
         TsRuntimeApi runtimeApi = new TsRuntimeApi();
         
+        // Phase 1: Create composter registration API
+        ComposterApi composterApi = new ComposterApi();
+        
+        // Apply queued compostable registrations to the registry
+        composterApi.applyRegistrations();
+        
+        // Phase 1: Create tags modification API
+        TagsApi tagsApi = new TagsApi();
+        
+        // Phase 2: Create advancements API
+        AdvancementsApi advancementsApi = new AdvancementsApi();
+        
+        // Phase 4: Create loot modification API
+        LootApi lootApi = new LootApi();
+        
+        // Phase 6: Create entities API with behavior hooks
+        com.tapestry.gameplay.entities.EntitiesApi entitiesApi = new com.tapestry.gameplay.entities.EntitiesApi();
+        
         // Create Phase 9 persistence API
         PersistenceApi persistenceApi = null;
         try {
@@ -760,6 +788,21 @@ public class TypeScriptRuntime {
         tapestryValue.putMember("config", configApi.createNamespace());
         tapestryValue.putMember("state", stateApi.createNamespace());
         tapestryValue.putMember("runtime", runtimeApi.createNamespace());
+        
+        // Phase 1: Add composting namespace
+        tapestryValue.putMember("composting", composterApi.createNamespace());
+        
+        // Phase 1: Add tags namespace
+        tapestryValue.putMember("tags", tagsApi.createNamespace());
+        
+        // Phase 2: Add advancements namespace
+        tapestryValue.putMember("advancements", advancementsApi.createNamespace());
+        
+        // Phase 4: Add loot namespace
+        tapestryValue.putMember("loot", lootApi.createNamespace());
+        
+        // Phase 6: Add entities namespace
+        tapestryValue.putMember("entities", entitiesApi.createNamespace());
         
         // Add Phase 9 persistence namespace if available
         if (persistenceApi != null) {

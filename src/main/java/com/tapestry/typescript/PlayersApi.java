@@ -1,9 +1,11 @@
 package com.tapestry.typescript;
 
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import com.tapestry.ServerContext;
 import com.tapestry.lifecycle.PhaseController;
 import com.tapestry.lifecycle.TapestryPhase;
 import com.tapestry.players.PlayerService;
-import com.tapestry.typescript.TypeScriptRuntime;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.graalvm.polyglot.proxy.ProxyObject;
 import org.graalvm.polyglot.Value;
@@ -12,6 +14,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Exposes player services to TypeScript.
@@ -71,6 +77,11 @@ public class PlayersApi {
         
         // Raycasting
         players.put("raycastBlock", createRaycastBlockFunction());
+        
+        // Phase 2: Player data persistence
+        players.put("getData", createGetDataFunction());
+        players.put("setData", createSetDataFunction());
+        players.put("setBatch", createSetBatchFunction());
         
         return ProxyObject.fromMap(players);
     }
@@ -359,4 +370,211 @@ public class PlayersApi {
             }
         };
     }
+    
+    /**
+     * Creates the getData function for retrieving player data.
+     */
+    private ProxyExecutable createGetDataFunction() {
+        return args -> {
+            PhaseController.getInstance().requirePhase(TapestryPhase.RUNTIME);
+            
+            if (args.length != 2) {
+                throw new IllegalArgumentException("players.getData requires exactly 2 arguments: (playerId, key)");
+            }
+            
+            String playerId = args[0].asString();
+            String key = args[1].asString();
+            
+            if (playerId == null || playerId.isBlank()) {
+                throw new IllegalArgumentException("playerId must be a non-empty string (UUID)");
+            }
+            if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("key must be a non-empty string");
+            }
+            
+            try {
+                // Under the new architecture the PlayerDataStore is backed by
+                // NBT; the memory cache is the source used here.  The store
+                // itself already handles server-thread dispatch.
+                UUID uuid;
+                try {
+                    uuid = UUID.fromString(playerId);
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn("Invalid player UUID '{}'", playerId);
+                    return null;
+                }
+                
+                Object valObj = com.tapestry.players.PlayerDataStore.get(uuid, key);
+                return valObj;
+            } catch (Exception e) {
+                String modId = TypeScriptRuntime.getCurrentModId();
+                LOGGER.error("players.getData failed for mod: {}, playerId: {}, key: {}", modId, playerId, key, e);
+                throw new RuntimeException("players.getData failed", e);
+            }
+        };
+    }
+    
+    /**
+     * Creates the setData function for storing player data.
+     */
+    private ProxyExecutable createSetDataFunction() {
+        return args -> {
+            PhaseController.getInstance().requirePhase(TapestryPhase.RUNTIME);
+            
+            if (args.length != 3) {
+                throw new IllegalArgumentException("players.setData requires exactly 3 arguments: (playerId, key, value)");
+            }
+            
+            String playerId = args[0].asString();
+            String key = args[1].asString();
+            Value valueArg = args[2];
+            
+            if (playerId == null || playerId.isBlank()) {
+                throw new IllegalArgumentException("playerId must be a non-empty string (UUID)");
+            }
+            if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("key must be a non-empty string");
+            }
+            
+            try {
+                // Convert Value to appropriate Java type
+                Object value = valueToJava(valueArg);
+                
+                UUID uuid;
+                try {
+                    uuid = UUID.fromString(playerId);
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn("Invalid player UUID '{}'", playerId);
+                    return null;
+                }
+                com.tapestry.players.PlayerDataStore.set(uuid, key, value);
+                return value;
+            } catch (Exception e) {
+                String modId = TypeScriptRuntime.getCurrentModId();
+                LOGGER.error("players.setData failed for mod: {}, playerId: {}, key: {}", modId, playerId, key, e);
+                throw new RuntimeException("players.setData failed", e);
+            }
+        };
+    }
+    
+    /**
+     * Creates the setBatch function for atomic batch player data operations.
+     */
+    private ProxyExecutable createSetBatchFunction() {
+        return args -> {
+            PhaseController.getInstance().requirePhase(TapestryPhase.RUNTIME);
+            
+            if (args.length != 2) {
+                throw new IllegalArgumentException("players.setBatch requires exactly 2 arguments: (playerId, dataObject)");
+            }
+            
+            String playerId = args[0].asString();
+            Value dataObject = args[1];
+            
+            if (playerId == null || playerId.isBlank()) {
+                throw new IllegalArgumentException("playerId must be a non-empty string (UUID)");
+            }
+            if (!dataObject.hasMembers()) {
+                throw new IllegalArgumentException("dataObject must be an object with key-value pairs");
+            }
+            
+            try {
+                // Extract all key-value pairs
+                Set<String> keys = dataObject.getMemberKeys();
+                Map<String, Object> batchData = new HashMap<>();
+                
+                if (keys.size() > 1000) {
+                    throw new IllegalArgumentException(
+                        String.format("Batch size %d exceeds maximum of 1000", keys.size())
+                    );
+                }
+                
+                for (String key : keys) {
+                    Value val = dataObject.getMember(key);
+                    batchData.put(key, valueToJava(val));
+                }
+                
+                MinecraftServer server = ServerContext.getCurrentServer();
+                if (server == null) {
+                    LOGGER.warn("Cannot set batch player data - server not available");
+                    return null;
+                }
+                
+                // Ensure we're on the server thread
+                if (!server.isOnThread()) {
+                    LOGGER.warn("players.setBatch called from non-server thread - operation not supported");
+                    return null;
+                }
+                
+                UUID uuid;
+                try {
+                    uuid = UUID.fromString(playerId);
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn("Invalid player UUID '{}'", playerId);
+                    return null;
+                }
+                
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
+                if (player == null) {
+                    LOGGER.warn("Player '{}' not found for batch data storage", playerId);
+                    return null;
+                }
+                
+                // Atomic batch update in our data store
+                com.tapestry.players.PlayerDataStore.setBatch(uuid, batchData);
+                return null;
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Exception e) {
+                String modId = TypeScriptRuntime.getCurrentModId();
+                LOGGER.error("players.setBatch failed for mod: {}, playerId: {}", modId, playerId, e);
+                throw new RuntimeException("players.setBatch failed", e);
+            }
+        };
+    }
+    
+    /**
+     * Converts a Graal Value to a Java object.
+     * Supports: null, boolean, number, string, array, object
+     */
+    private Object valueToJava(Value val) {
+        if (val.isNull()) {
+            return null;
+        }
+        if (val.isBoolean()) {
+            return val.asBoolean();
+        }
+        if (val.isNumber()) {
+            if (val.fitsInInt()) {
+                return val.asInt();
+            } else if (val.fitsInLong()) {
+                return val.asLong();
+            } else {
+                return val.asDouble();
+            }
+        }
+        if (val.isString()) {
+            return val.asString();
+        }
+        if (val.hasArrayElements()) {
+            List<Object> list = new ArrayList<>();
+            for (long i = 0; i < val.getArraySize(); i++) {
+                list.add(valueToJava(val.getArrayElement(i)));
+            }
+            return list;
+        }
+        if (val.hasMembers()) {
+            Map<String, Object> map = new HashMap<>();
+            Set<String> keys = val.getMemberKeys();
+            for (String key : keys) {
+                map.put(key, valueToJava(val.getMember(key)));
+            }
+            return map;
+        }
+        
+        // Fallback: return as string
+        return val.asString();
+    }
+    
 }
+

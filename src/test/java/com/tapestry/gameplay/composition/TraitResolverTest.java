@@ -142,6 +142,60 @@ class TraitResolverTest {
         assertTrue(seaVegetable.getItems().contains("test:nori"));
         assertTrue(seaVegetable.getItems().contains("test:kelp"));
     }
+
+    @Test
+    void testResolveWithInheritance() {
+        // Register parent/child traits
+        traitSystem.register("food", new TraitConfig());
+        traitSystem.register("fish_food", new TraitConfig(null, "food"));
+        
+        // Register item with child trait
+        itemRegistration.register("test:nori", new ItemOptions().traits("fish_food"));
+        
+        // Resolve
+        TraitResolver.ResolutionResult result = resolver.resolve();
+        
+        // Expect two traits, one item, and two mappings (child->item + parent->item)
+        assertEquals(2, result.getTraitCount());
+        assertEquals(1, result.getItemCount());
+        assertEquals(2, result.getMappingCount());
+        
+        // Child should contain the item
+        TraitDefinition child = traitSystem.getTrait("fish_food");
+        assertTrue(child.getItems().contains("test:nori"));
+        // Parent should also have the item due to inheritance
+        TraitDefinition parent = traitSystem.getTrait("food");
+        assertTrue(parent.getItems().contains("test:nori"));
+    }
+
+    @Test
+    void testResolveWithMissingParentThrows() {
+        // Register only child trait that extends missing parent
+        traitSystem.register("fish_food", new TraitConfig(null, "food"));
+        
+        itemRegistration.register("test:nori", new ItemOptions().traits("fish_food"));
+        
+        IllegalStateException ex = assertThrows(
+            IllegalStateException.class,
+            () -> resolver.resolve()
+        );
+        assertTrue(ex.getMessage().contains("extends undefined trait"));
+    }
+
+    @Test
+    void testResolveWithCycleThrows() {
+        // Create cyclic inheritance
+        traitSystem.register("a", new TraitConfig(null, "b"));
+        traitSystem.register("b", new TraitConfig(null, "a"));
+        
+        itemRegistration.register("test:item", new ItemOptions().traits("a"));
+        
+        IllegalStateException ex = assertThrows(
+            IllegalStateException.class,
+            () -> resolver.resolve()
+        );
+        assertTrue(ex.getMessage().contains("cycle"));
+    }
     
     @Test
     void testResolveWithUndefinedTraitThrowsException() {

@@ -196,11 +196,21 @@ public class TapestryMod implements ModInitializer {
         // Register for both dedicated and integrated servers
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             LOGGER.info("Server started - initializing services");
+
+            // let PlayerDataStore schedule off-thread operations
+            com.tapestry.players.PlayerDataStore.setServer(server);
             
             // Initialize PlayerService now that we're on the server
             playerService = new PlayerService(server);
             playersApi.setPlayerService(playerService);
             LOGGER.info("PlayerService initialized with server instance");
+            
+            // Initialize loot table modification system
+            com.tapestry.gameplay.loot.FabricLootRegistry lootRegistry = 
+                new com.tapestry.gameplay.loot.FabricLootRegistry(
+                    com.tapestry.gameplay.loot.LootModifier.getInstance());
+            lootRegistry.initialize();
+            LOGGER.info("FabricLootRegistry initialized for loot table modifications");
             
                         
             // Initialize Phase 9 persistence service BEFORE advancing to RUNTIME
@@ -281,6 +291,15 @@ public class TapestryMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             LOGGER.info("Server tick event fired! Server tick: {}", server.getTicks());
             
+            // Flush any queued events before processing this tick
+            if (eventBus != null) {
+                try {
+                    eventBus.dispatchQueued();
+                } catch (Exception e) {
+                    LOGGER.error("Error while flushing event queue", e);
+                }
+            }
+            
             // Emit Phase 11 engine:tick event
             if (eventBus != null) {
                 try {
@@ -340,13 +359,14 @@ public class TapestryMod implements ModInitializer {
             }
         });
         
-        // Player join/quit hooks - emit events to EventBus
+        // Player join/quit hooks - emit events to EventBus and manage data cache
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            ServerPlayerEntity player = handler.getPlayer();
+            // load NBT data into cache
+            com.tapestry.players.PlayerDataStore.load(player);
+
             if (eventBus != null) {
                 try {
-                    // Create player event context using RuntimeContextFactory
-                    var player = handler.getPlayer();
-                    // TODO: Fix mapping issues - temporarily disabled
                     eventBus.emit("engine", "playerJoin", null);
                 } catch (Exception e) {
                     LOGGER.error("Error during player join event", e);
@@ -355,11 +375,12 @@ public class TapestryMod implements ModInitializer {
         });
         
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            ServerPlayerEntity player = handler.getPlayer();
+            // persist cache to NBT
+            com.tapestry.players.PlayerDataStore.save(player);
+
             if (eventBus != null) {
                 try {
-                    // Create player event context using RuntimeContextFactory
-                    var player = handler.getPlayer();
-                    // TODO: Fix mapping issues - temporarily disabled
                     eventBus.emit("engine", "playerLeave", null);
                 } catch (Exception e) {
                     LOGGER.error("Error during player leave event", e);
@@ -536,6 +557,9 @@ public class TapestryMod implements ModInitializer {
         PhaseController.getInstance().advanceTo(TapestryPhase.TS_REGISTER);
         
         try {
+            // Enable entity interaction hook registration during TS_REGISTER
+            com.tapestry.gameplay.entities.EntityInteractionHookRegistry.getInstance().allowRegistration();
+            
             // Extend TypeScript runtime with capability registration APIs
             tsRuntime.extendForCapabilityRegistration();
             
@@ -574,6 +598,9 @@ public class TapestryMod implements ModInitializer {
             
             // Mark discovery as complete before moving to loading phase
             modRegistry.completeDiscovery();
+            
+            // Disable entity hook registration now that TS_REGISTER has finished
+            com.tapestry.gameplay.entities.EntityInteractionHookRegistry.getInstance().disallowRegistration();
             
             LOGGER.info("TypeScript capability registration complete");
 
@@ -716,6 +743,8 @@ public class TapestryMod implements ModInitializer {
             // Initialize client-safe Phase 6 services
             schedulerService = new SchedulerService();
             eventBus = new EventBus();
+            // configure queue size from runtime config
+            eventBus.setMaxQueueSize(com.tapestry.RuntimeConfig.getMaxEventQueueSize());
             configService = new ConfigService(java.nio.file.Paths.get("config", "tapestry", "mods"));
             stateService = new ModStateService();
             

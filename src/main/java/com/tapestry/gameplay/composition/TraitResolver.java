@@ -96,6 +96,47 @@ public class TraitResolver {
             );
         }
         
+        // Step 5: Validate inheritance relationships and propagate items
+        for (TraitDefinition trait : allTraits.values()) {
+            String parentName = trait.getParentName();
+            if (parentName == null) continue;
+            
+            // parent must exist
+            TraitDefinition parent = allTraits.get(parentName);
+            if (parent == null) {
+                throw new IllegalStateException(
+                    "Trait '" + trait.getName() + "' extends undefined trait '" + parentName + "'"
+                );
+            }
+            
+            // detect simple cycle (child -> parent -> child)
+            String ancestor = parent.getParentName();
+            while (ancestor != null) {
+                if (ancestor.equals(trait.getName())) {
+                    throw new IllegalStateException(
+                        "Trait inheritance cycle detected involving '" + trait.getName() + "' and '" + parentName + "'"
+                    );
+                }
+                TraitDefinition ancDef = allTraits.get(ancestor);
+                ancestor = ancDef != null ? ancDef.getParentName() : null;
+            }
+        }
+        
+        // Propagate item mappings up the inheritance chain
+        for (TraitDefinition trait : allTraits.values()) {
+            Set<String> itemsForTrait = new HashSet<>(trait.getItems());
+            String parentName = trait.getParentName();
+            while (parentName != null) {
+                TraitDefinition parent = allTraits.get(parentName);
+                if (parent == null) break; // should have been caught above
+                for (String itemId : itemsForTrait) {
+                    parent.addItem(itemId);
+                    mappingCount++;
+                }
+                parentName = parent.getParentName();
+            }
+        }
+        
         LOGGER.info("Trait resolution complete: {} traits, {} items, {} mappings",
             allTraits.size(), allItems.size(), mappingCount);
         

@@ -15,6 +15,7 @@ import java.util.Set;
 public class TraitDefinition {
     private final String name;
     private final String tag;
+    private final String parentName; // optional inheritance
     private final Set<String> items;
     private final List<Consumption> consumers;
     private volatile boolean frozen;
@@ -24,14 +25,30 @@ public class TraitDefinition {
      * 
      * @param name the unique trait identifier
      * @param tag the Minecraft tag this trait maps to
+     * @param parentName optional parent trait that this trait extends
      * @throws IllegalArgumentException if name or tag format is invalid
      */
+    /**
+     * Creates a new trait definition with no parent.
+     *
+     * This overload is provided for backwards compatibility with earlier tests
+     * and APIs that did not support inheritance. It simply delegates to the
+     * full constructor passing {@code null} as the parent name.
+     */
     public TraitDefinition(String name, String tag) {
+        this(name, tag, null);
+    }
+
+    public TraitDefinition(String name, String tag, String parentName) {
         validateTraitName(name);
         validateTagFormat(tag);
+        if (parentName != null && parentName.equals(name)) {
+            throw new IllegalArgumentException("Trait '" + name + "' cannot extend itself");
+        }
         
         this.name = name;
         this.tag = tag;
+        this.parentName = parentName;
         this.items = new HashSet<>();
         this.consumers = new ArrayList<>();
         this.frozen = false;
@@ -90,6 +107,15 @@ public class TraitDefinition {
      */
     public String getTag() {
         return tag;
+    }
+    
+    /**
+     * Gets the parent trait name if this trait extends another.
+     * 
+     * @return parent trait name or null if none
+     */
+    public String getParentName() {
+        return parentName;
     }
     
     /**

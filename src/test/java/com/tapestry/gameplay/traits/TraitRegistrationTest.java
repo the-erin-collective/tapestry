@@ -148,6 +148,37 @@ class TraitRegistrationTest {
         );
     }
     
+    // ===== Test Case 2.5: Inheritance support =====
+    
+    @Test
+    void testRegisterTrait_WithParent() {
+        // Verify child trait stores parent name correctly
+        traitSystem.register("food", new TraitConfig("tapestry:food_items"));
+        traitSystem.register("fish_food", new TraitConfig("tapestry:fish_items", "food"));
+        TraitDefinition child = traitSystem.getTrait("fish_food");
+        assertNotNull(child);
+        assertEquals("food", child.getParentName());
+    }
+
+    @Test
+    void testRegisterTrait_ParentMayNotExistUntilResolve() {
+        // Allow registering a trait that extends a parent which is not yet defined
+        traitSystem.register("fish_food", new TraitConfig("tapestry:fish_items", "food"));
+        TraitDefinition child = traitSystem.getTrait("fish_food");
+        assertNotNull(child);
+        assertEquals("food", child.getParentName());
+        // validation of missing parent will occur later during composition
+    }
+
+    @Test
+    void testRegisterTrait_CannotExtendSelf() {
+        IllegalArgumentException ex = assertThrows(
+            IllegalArgumentException.class,
+            () -> traitSystem.register("self", new TraitConfig("tapestry:self_items", "self"))
+        );
+        assertTrue(ex.getMessage().contains("cannot extend itself"));
+    }
+
     // ===== Test Case 3: Phase violation errors =====
     
     @Test

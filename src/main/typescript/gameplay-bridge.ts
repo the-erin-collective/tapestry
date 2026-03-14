@@ -382,10 +382,50 @@ function createLootAPI(): LootAPI {
  * 
  * @returns A TypeScript GameplayAPI implementation
  */
+/**
+ * Creates the TraitAPI implementation that bridges to Java.
+ *
+ * The TypeScript API mirrors the Java static helper {@code TraitAPI}, which
+ * forwards requests to the singleton GameplayAPI instance. Config objects are
+ * converted to the corresponding Java classes before delegation.
+ *
+ * @returns A TypeScript TraitAPI implementation
+ */
+function createTraitAPI(): TraitAPI {
+  const JavaTraitAPI = Java.type('com.tapestry.gameplay.traits.TraitAPI');
+  const JavaTraitConfig = Java.type('com.tapestry.gameplay.traits.TraitConfig');
+  const JavaConsumptionConfig = Java.type('com.tapestry.gameplay.traits.ConsumptionConfig');
+
+  return {
+    register(name: Identifier, config?: TraitConfig): void {
+      let javaConfig = null;
+      if (config !== undefined && config !== null) {
+        // choose appropriate constructor based on provided fields
+        if (config.tag !== undefined && config.extendsTrait !== undefined) {
+          javaConfig = new JavaTraitConfig(config.tag, config.extendsTrait);
+        } else if (config.tag !== undefined) {
+          javaConfig = new JavaTraitConfig(config.tag);
+        } else if (config.extendsTrait !== undefined) {
+          javaConfig = new JavaTraitConfig(null, config.extendsTrait);
+        } else {
+          javaConfig = new JavaTraitConfig();
+        }
+      }
+      JavaTraitAPI.register(name, javaConfig);
+    },
+
+    consume(name: Identifier, config: ConsumptionConfig): void {
+      const javaConfig = new JavaConsumptionConfig(config.entity, config.behavior);
+      JavaTraitAPI.consume(name, javaConfig);
+    }
+  };
+}
+
 export function createGameplayAPI(): GameplayAPI {
   return {
     trades: createTradeAPI(),
-    loot: createLootAPI()
+    loot: createLootAPI(),
+    traits: createTraitAPI()
   };
 }
 

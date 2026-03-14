@@ -53,10 +53,16 @@ public class TraitSystem {
         
         validateTagFormat(tag);
         
-        TraitDefinition definition = new TraitDefinition(name, tag);
+        String parent = config != null ? config.getExtendsTrait() : null;
+        if (parent != null && parent.equals(name)) {
+            throw new IllegalArgumentException("Trait '" + name + "' cannot extend itself.");
+        }
+        
+        TraitDefinition definition = new TraitDefinition(name, tag, parent);
         traits.put(name, definition);
         
-        LOGGER.info("Registered trait '{}' with tag '{}'", name, tag);
+        LOGGER.info("Registered trait '{}' with tag '{}'{}", name, tag,
+            parent != null ? " extending '" + parent + "'" : "");
     }
     
     /**

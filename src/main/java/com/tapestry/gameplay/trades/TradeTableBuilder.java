@@ -5,6 +5,7 @@ import com.tapestry.gameplay.patch.PatchSet;
 import com.tapestry.gameplay.patch.PatchTarget;
 import com.tapestry.gameplay.trades.filter.TradeEntry;
 import com.tapestry.gameplay.trades.filter.TradeFilter;
+import com.tapestry.gameplay.trades.model.BasicTradeEntry;
 import com.tapestry.gameplay.trades.operations.AddTradeOperation;
 import com.tapestry.gameplay.trades.operations.RemoveTradeOperation;
 import com.tapestry.gameplay.trades.operations.ReplaceTradeInputOperation;
@@ -132,38 +133,28 @@ public class TradeTableBuilder {
      * Adds an add operation that adds a new trade to the trade table.
      * 
      * <p>The trade specification is a map that must contain the trade properties.
-     * The exact format depends on the TradeEntry implementation. At minimum, it should
-     * include:
+     * Supported keys:
      * <ul>
-     *   <li>{@code "input"} - String (input item identifier)</li>
-     *   <li>{@code "output"} - String (output item identifier)</li>
-     *   <li>{@code "level"} - Integer (villager level)</li>
+     *   <li>{@code "buy"} - TradeItem, Identifier, or String (primary input)</li>
+     *   <li>{@code "buy2"} - TradeItem, Identifier, or String (secondary input, optional)</li>
+     *   <li>{@code "sell"} - TradeItem, Identifier, or String (output)</li>
+     *   <li>{@code "level"} - Integer (villager level, required)</li>
+     *   <li>{@code "maxUses"} - Integer (default: 16)</li>
+     *   <li>{@code "experience"} - Integer (default: 0)</li>
+     *   <li>{@code "priceMultiplier"} - Float (default: 1.0)</li>
      * </ul>
      * </p>
-     * 
-     * <p>Note: This method currently requires a TradeEntry factory method to be implemented.
-     * The implementation should provide a way to create TradeEntry instances from specifications.</p>
      * 
      * @param tradeSpec The trade specification map
      * @return This builder for method chaining
      * @throws IllegalArgumentException if tradeSpec is null or contains invalid values
-     * @throws UnsupportedOperationException if TradeEntry creation from spec is not yet implemented
      */
     public TradeTableBuilder add(Map<String, Object> tradeSpec) {
         Objects.requireNonNull(tradeSpec, "Trade specification cannot be null");
         
-        // TODO: Implement TradeEntry.fromSpec() or a factory method
-        // For now, this is a placeholder that will need to be completed when
-        // the TradeEntry creation mechanism is implemented
-        throw new UnsupportedOperationException(
-            "TradeEntry creation from specification is not yet implemented. " +
-            "A factory method or builder for TradeEntry needs to be added."
-        );
-        
-        // Future implementation would look like:
-        // TradeEntry entry = TradeEntry.fromSpec(tradeSpec);
-        // operations.add(new AddTradeOperation(entry));
-        // return this;
+        TradeEntry entry = BasicTradeEntry.fromSpec(tradeSpec);
+        operations.add(new AddTradeOperation(entry));
+        return this;
     }
     
     /**

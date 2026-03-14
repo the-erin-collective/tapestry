@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "com.tapestry",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "gameplay.patches.mixins.CatEntityMixin",
+    "gameplay.patches.mixins.CowEntityMixin",
+    "gameplay.patches.mixins.ChickenEntityMixin",
+    "gameplay.patches.mixins.DolphinEntityMixin",
+    "gameplay.patches.mixins.AxolotlEntityMixin",
+    "mixin.TagLoaderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

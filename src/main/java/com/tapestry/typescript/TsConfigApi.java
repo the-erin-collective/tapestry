@@ -63,6 +63,19 @@ public class TsConfigApi {
             return configService.getSelfConfig(modId);
         });
         
+        // add runtime tuning properties
+        config.put("maxEventQueueSize", (ProxyExecutable) args -> {
+            if (args.length == 0) {
+                return com.tapestry.RuntimeConfig.getMaxEventQueueSize();
+            } else if (args.length == 1) {
+                int newSize = args[0].asInt();
+                com.tapestry.RuntimeConfig.setMaxEventQueueSize(newSize);
+                return null;
+            } else {
+                throw new IllegalArgumentException("config.maxEventQueueSize takes at most one argument (newValue)");
+            }
+        });
+
         return ProxyObject.fromMap(config);
     }
 }

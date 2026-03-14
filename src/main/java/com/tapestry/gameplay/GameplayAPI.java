@@ -3,6 +3,8 @@ package com.tapestry.gameplay;
 import com.mojang.brigadier.CommandDispatcher;
 import com.tapestry.gameplay.brewing.BrewingRecipe;
 import com.tapestry.gameplay.composition.CompositionOrchestrator;
+import com.tapestry.gameplay.entities.EntitiesApi;
+import com.tapestry.gameplay.entities.EntityInteractionHookRegistry;
 import com.tapestry.gameplay.items.ItemRegistration;
 import com.tapestry.gameplay.loot.LootModifier;
 import com.tapestry.gameplay.patch.PatchPlan;
@@ -19,27 +21,35 @@ import java.io.IOException;
 /**
  * Main facade for Tapestry Gameplay API.
  * 
- * Provides access to trait system, item registration, brewing recipes, and loot modification.
- * This is the primary entry point for gameplay API functionality.
+ * Provides access to trait system, item registration, brewing recipes, loot modification,
+ * and entity interaction hooks. This is the primary entry point for gameplay API functionality.
  */
 public class GameplayAPI {
     private static final Logger LOGGER = LoggerFactory.getLogger(GameplayAPI.class);
+    
+    // singleton instance used by the TypeScript bridge and other static helpers
+    private static GameplayAPI instance;
     
     private final TraitSystem traits;
     private final ItemRegistration items;
     private final BrewingRecipe brewing;
     private final LootModifier loot;
+    private final EntitiesApi entities;
     private final CompositionOrchestrator compositionOrchestrator;
     
     /**
      * Creates a new gameplay API instance.
      */
     public GameplayAPI() {
+        // remember the instance so static APIs can locate it
+        instance = this;
+        
         this.traits = new TraitSystem();
         this.items = new ItemRegistration();
         this.items.setTraitSystem(this.traits); // Wire trait system for validation
         this.brewing = new BrewingRecipe();
         this.loot = new LootModifier();
+        this.entities = new EntitiesApi();
         this.compositionOrchestrator = new CompositionOrchestrator(traits, items);
         
         LOGGER.info("GameplayAPI initialized");
@@ -54,6 +64,16 @@ public class GameplayAPI {
         
         // Register fish_food trait
         traits.register("fish_food", new com.tapestry.gameplay.traits.TraitConfig("tapestry:fish_items"));
+        
+        // Register behavior traits for vanilla entity compatibility
+        traits.register("cat_food", new com.tapestry.gameplay.traits.TraitConfig("tapestry:cat_foods"));
+        traits.register("wolf_food", new com.tapestry.gameplay.traits.TraitConfig("tapestry:wolf_foods"));
+        traits.register("axolotl_food", new com.tapestry.gameplay.traits.TraitConfig("tapestry:axolotl_foods"));
+        traits.register("dolphin_food", new com.tapestry.gameplay.traits.TraitConfig("tapestry:dolphin_foods"));
+        
+        // Register breeding item traits
+        traits.register("cow_breeding_item", new com.tapestry.gameplay.traits.TraitConfig("tapestry:cow_breeding_items"));
+        traits.register("chicken_breeding_item", new com.tapestry.gameplay.traits.TraitConfig("tapestry:chicken_breeding_items"));
         
         // Register milk_like trait
         traits.register("milk_like", new com.tapestry.gameplay.traits.TraitConfig("tapestry:milk_items"));
@@ -77,6 +97,22 @@ public class GameplayAPI {
      */
     public TraitSystem getTraits() {
         return traits;
+    }
+
+    /**
+     * Returns the singleton GameplayAPI instance initialized by the framework.
+     * This is primarily used by static helper classes (e.g. TypeScript bridge)
+     * which do not otherwise have direct access to a constructed API object.
+     *
+     * @return the current GameplayAPI instance
+     * @throws IllegalStateException if the API has not yet been constructed
+     */
+    public static GameplayAPI getInstance() {
+        if (instance == null) {
+            System.err.println("[DEBUG] GameplayAPI.getInstance() called but instance is null");
+            throw new IllegalStateException("GameplayAPI has not been initialized yet");
+        }
+        return instance;
     }
     
     /**
@@ -104,6 +140,15 @@ public class GameplayAPI {
      */
     public LootModifier getLoot() {
         return loot;
+    }
+    
+    /**
+     * Gets the entities API with behavior hooks.
+     * 
+     * @return the entities API
+     */
+    public EntitiesApi getEntities() {
+        return entities;
     }
     
     /**
